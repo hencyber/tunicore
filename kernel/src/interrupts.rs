@@ -1,128 +1,186 @@
-//! Hardware interrupt handling — PIC 8259 initialization and IRQ handlers
+//! Interrupt handling — Local APIC (MSR-based)
 //!
-//! Sets up the legacy PIC (Programmable Interrupt Controller) for timer
-//! and keyboard interrupts. Will be replaced by APIC in a future phase.
+//! Uses MSR-based APIC register access to avoid MMIO page faults.
+//! The legacy PIC is fully disabled.
 
-use crate::{serial_print, serial_println};
+use crate::serial_println;
 use x86_64::instructions::port::Port;
-use x86_64::structures::idt::InterruptStackFrame;
 
-/// PIC port addresses
-const PIC1_COMMAND: u16 = 0x20;
-const PIC1_DATA: u16 = 0x21;
-const PIC2_COMMAND: u16 = 0xA0;
-const PIC2_DATA: u16 = 0xA1;
+/// APIC MSR base (xAPIC MSR mode: base + (register_offset >> 4))
+const APIC_MSR_BASE: u32 = 0x800;
 
-/// PIC interrupt vector offset (must not conflict with CPU exceptions 0-31)
-pub const PIC_OFFSET: u8 = 32;
+/// Convenience APIC register IDs (offset >> 4)
+const APIC_REG_SPURIOUS: u32 = 0x0F;
+const APIC_REG_TPR: u32 = 0x08;
+const APIC_REG_EOI: u32 = 0x0B;
+const APIC_REG_TIMER_LVT: u32 = 0x32;
+const APIC_REG_TIMER_INIT: u32 = 0x38;
+const APIC_REG_TIMER_DIVIDE: u32 = 0x3E;
+const APIC_REG_ID: u32 = 0x02;
+const APIC_REG_VERSION: u32 = 0x03;
 
-/// End of Interrupt command
-const EOI: u8 = 0x20;
+/// Interrupt vectors
+const TIMER_VECTOR: u8 = 32;
+const SPURIOUS_VECTOR: u8 = 0xFF;
 
-/// Hardware interrupt indices (offset from PIC_OFFSET)
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum InterruptIndex {
-    Timer = PIC_OFFSET,
-    Keyboard = PIC_OFFSET + 1,
-}
+/// Monotonic tick counter (for agent timeouts & scheduling)
+pub static TICK_COUNT: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
 
-impl InterruptIndex {
-    pub fn as_u8(self) -> u8 {
-        self as u8
-    }
-
-    pub fn as_usize(self) -> usize {
-        self as usize
-    }
-}
-
-/// Initialize the 8259 PIC with standard ICW sequence
-pub fn init() {
+/// Read an APIC register via MSR
+fn apic_read_msr(reg: u32) -> u64 {
+    let msr = APIC_MSR_BASE + reg;
+    let (lo, hi): (u32, u32);
     unsafe {
-        let mut pic1_cmd = Port::<u8>::new(PIC1_COMMAND);
-        let mut pic1_data = Port::<u8>::new(PIC1_DATA);
-        let mut pic2_cmd = Port::<u8>::new(PIC2_COMMAND);
-        let mut pic2_data = Port::<u8>::new(PIC2_DATA);
+        core::arch::asm!(
+            "rdmsr",
+            in("ecx") msr,
+            out("eax") lo,
+            out("edx") hi,
+        );
+    }
+    ((hi as u64) << 32) | lo as u64
+}
 
-        // Save masks
-        let mask1 = pic1_data.read();
-        let mask2 = pic2_data.read();
+/// Write an APIC register via MSR
+fn apic_write_msr(reg: u32, value: u64) {
+    let msr = APIC_MSR_BASE + reg;
+    let lo = value as u32;
+    let hi = (value >> 32) as u32;
+    unsafe {
+        core::arch::asm!(
+            "wrmsr",
+            in("ecx") msr,
+            in("eax") lo,
+            in("edx") hi,
+        );
+    }
+}
 
-        // ICW1: start initialization sequence (cascade mode, ICW4 needed)
-        pic1_cmd.write(0x11);
-        io_wait();
-        pic2_cmd.write(0x11);
-        io_wait();
+/// Read APIC register via MMIO (fallback for xAPIC mode)
+unsafe fn apic_read_mmio(base: u64, offset: u32) -> u32 {
+    let addr = base + offset as u64;
+    unsafe { core::ptr::read_volatile(addr as *const u32) }
+}
 
-        // ICW2: vector offset
-        pic1_data.write(PIC_OFFSET);
-        io_wait();
-        pic2_data.write(PIC_OFFSET + 8);
-        io_wait();
+/// Write APIC register via MMIO (fallback for xAPIC mode)
+unsafe fn apic_write_mmio(base: u64, offset: u32, value: u32) {
+    let addr = base + offset as u64;
+    unsafe { core::ptr::write_volatile(addr as *mut u32, value) }
+}
 
-        // ICW3: tell Master PIC there is a slave at IRQ2
-        pic1_data.write(4); // bit 2 = IRQ2 has slave
-        io_wait();
-        pic2_data.write(2); // slave cascade identity
-        io_wait();
+/// Disable the legacy 8259 PIC completely
+fn disable_legacy_pic() {
+    unsafe {
+        Port::<u8>::new(0xA1).write(0xFF);
+        Port::<u8>::new(0x21).write(0xFF);
+    }
+}
 
-        // ICW4: 8086 mode
-        pic1_data.write(0x01);
-        io_wait();
-        pic2_data.write(0x01);
-        io_wait();
-
-        // Restore masks (but unmask timer and keyboard)
-        let _ = mask1;
-        let _ = mask2;
-        pic1_data.write(0b11111100); // unmask IRQ0 (timer) and IRQ1 (keyboard)
-        pic2_data.write(0xFF); // mask all slave IRQs for now
+/// Enable x2APIC mode via IA32_APIC_BASE MSR
+fn enable_x2apic() -> bool {
+    let lo: u32;
+    let hi: u32;
+    unsafe {
+        core::arch::asm!("rdmsr", in("ecx") 0x1Bu32, out("eax") lo, out("edx") hi);
     }
 
-    // Enable interrupts
+    // Set bit 10 (xAPIC enable) and bit 11 (x2APIC enable)
+    let new_lo = lo | (1 << 10) | (1 << 11);
+    unsafe {
+        core::arch::asm!("wrmsr", in("ecx") 0x1Bu32, in("eax") new_lo, in("edx") hi);
+    }
+
+    // Verify
+    let verify_lo: u32;
+    unsafe {
+        core::arch::asm!("rdmsr", in("ecx") 0x1Bu32, out("eax") verify_lo, out("edx") _);
+    }
+    verify_lo & (1 << 11) != 0
+}
+
+/// Mode of APIC operation
+#[derive(Debug, Clone, Copy)]
+enum ApicMode {
+    X2Apic,
+    XApic { base: u64 },
+}
+
+static mut APIC_MODE: ApicMode = ApicMode::X2Apic;
+
+/// Initialize the Local APIC
+pub fn init(hhdm_offset: u64) {
+    disable_legacy_pic();
+
+    // Try x2APIC first (MSR-based, no MMIO needed)
+    let x2apic_ok = enable_x2apic();
+
+    if x2apic_ok {
+        unsafe { APIC_MODE = ApicMode::X2Apic; }
+        serial_println!("[apic] x2APIC mode enabled (MSR-based)");
+
+        // Set spurious vector + enable
+        apic_write_msr(APIC_REG_SPURIOUS, 0x100 | SPURIOUS_VECTOR as u64);
+        // Accept all interrupts
+        apic_write_msr(APIC_REG_TPR, 0);
+        // Timer: divide by 16
+        apic_write_msr(APIC_REG_TIMER_DIVIDE, 0x03);
+        // Timer: periodic mode, vector 32
+        apic_write_msr(APIC_REG_TIMER_LVT, (1 << 17) | TIMER_VECTOR as u64);
+        // Timer initial count
+        apic_write_msr(APIC_REG_TIMER_INIT, 0x0010_0000);
+
+        let id = apic_read_msr(APIC_REG_ID);
+        let ver = apic_read_msr(APIC_REG_VERSION);
+        serial_println!("[apic] ID: {}, Version: {:#x}", id, ver & 0xFF);
+    } else {
+        // Fallback: xAPIC MMIO mode
+        let lo: u32;
+        let hi: u32;
+        unsafe {
+            core::arch::asm!("rdmsr", in("ecx") 0x1Bu32, out("eax") lo, out("edx") hi);
+        }
+        let phys = ((hi as u64) << 32 | lo as u64) & 0xFFFFF000;
+        let virt = hhdm_offset + phys;
+        unsafe { APIC_MODE = ApicMode::XApic { base: virt }; }
+        serial_println!("[apic] xAPIC MMIO mode at {:#x}", virt);
+
+        unsafe {
+            apic_write_mmio(virt, 0x0F0, 0x100 | SPURIOUS_VECTOR as u32);
+            apic_write_mmio(virt, 0x080, 0);
+            apic_write_mmio(virt, 0x3E0, 0x03);
+            apic_write_mmio(virt, 0x320, (1 << 17) | TIMER_VECTOR as u32);
+            apic_write_mmio(virt, 0x380, 0x0010_0000);
+        }
+    }
+
     x86_64::instructions::interrupts::enable();
 }
 
-/// Send End of Interrupt to PIC
-fn send_eoi(irq: u8) {
-    unsafe {
-        if irq >= PIC_OFFSET + 8 {
-            // Slave PIC
-            Port::<u8>::new(PIC2_COMMAND).write(EOI);
-        }
-        // Always send to master
-        Port::<u8>::new(PIC1_COMMAND).write(EOI);
+/// Send End of Interrupt
+pub fn send_eoi() {
+    match unsafe { APIC_MODE } {
+        ApicMode::X2Apic => apic_write_msr(APIC_REG_EOI, 0),
+        ApicMode::XApic { base } => unsafe { apic_write_mmio(base, 0x0B0, 0) },
     }
 }
 
-/// I/O wait — short delay for PIC initialization
-fn io_wait() {
-    unsafe {
-        Port::<u8>::new(0x80).write(0);
-    }
+/// Get current monotonic tick count
+pub fn ticks() -> u64 {
+    TICK_COUNT.load(core::sync::atomic::Ordering::Relaxed)
 }
 
-// ─── IRQ Handlers ───────────────────────────────────────────────
-
-/// Timer tick counter
-static TIMER_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
-
-/// Timer interrupt handler (IRQ0) — fires ~18.2 times per second
-pub extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
-    let ticks = TIMER_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-
-    // Print a dot every ~1 second (every 18 ticks)
-    if ticks % 18 == 0 && ticks > 0 && ticks <= 180 {
-        crate::serial_print!(".");
-    }
-
-    send_eoi(InterruptIndex::Timer.as_u8());
+/// APIC timer handler
+pub extern "x86-interrupt" fn timer_handler(
+    _stack_frame: x86_64::structures::idt::InterruptStackFrame,
+) {
+    TICK_COUNT.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    send_eoi();
 }
 
-/// Keyboard interrupt handler (IRQ1) — reads scancode
-pub extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
-    let scancode: u8 = unsafe { Port::<u8>::new(0x60).read() };
-    serial_println!("[keyboard] scancode: {:#04x}", scancode);
-    send_eoi(InterruptIndex::Keyboard.as_u8());
+/// Spurious interrupt handler
+pub extern "x86-interrupt" fn spurious_handler(
+    _stack_frame: x86_64::structures::idt::InterruptStackFrame,
+) {
+    // No EOI for spurious
 }

@@ -1,7 +1,8 @@
-//! TuniCore — AI Agent Kernel
+//! TuniCore — Confidential Agent Runtime
 //!
-//! A capability-based, Rust-native microkernel designed to run
-//! AI agents securely. The agent is the interface. The kernel is the guard.
+//! A capability-based kernel where the agent is the interface
+//! and the kernel is the guard. No POSIX. No shell. No sudo.
+//! Just capabilities, agents, and audit trails.
 
 #![no_std]
 #![no_main]
@@ -9,23 +10,31 @@
 
 extern crate alloc;
 
-mod capability;
-mod framebuffer;
+// ─── Core modules (hardware foundation) ─────────────────────────
+mod serial;
 mod gdt;
 mod idt;
 mod interrupts;
+mod hwdetect;
 mod memory;
-mod serial;
+mod framebuffer;
+
+// ─── Agent architecture (the innovation) ─────────────────────────
+mod capability;
+mod resource;
+mod cap_table;
+mod agent;
+mod audit;
 
 use core::panic::PanicInfo;
 use limine::request::{FramebufferRequest, HhdmRequest, MemmapRequest};
 
-/// Base revision — tells Limine what protocol version we support
+// ─── Limine boot protocol requests ──────────────────────────────
+
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 static BASE_REVISION: limine::BaseRevision = limine::BaseRevision::new();
 
-/// Limine requests — placed in special linker sections
 #[used]
 #[unsafe(link_section = ".limine_requests_start")]
 static _START: limine::RequestsStartMarker = limine::RequestsStartMarker::new();
@@ -46,99 +55,112 @@ static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 #[unsafe(link_section = ".limine_requests_end")]
 static _END: limine::RequestsEndMarker = limine::RequestsEndMarker::new();
 
-/// Kernel entry point — called by Limine after boot
+// ─── Kernel entry ───────────────────────────────────────────────
+
 #[unsafe(no_mangle)]
 extern "C" fn kmain() -> ! {
-    // 1. Serial console first — our primary debug channel
+    // Phase 1: Hardware foundation
     serial::init();
-    serial_println!("========================================");
-    serial_println!("  TuniCore v0.1.0 — AI Agent Kernel");
-    serial_println!("  Capability-based. Rust-native.");
-    serial_println!("========================================");
+    serial_println!("TuniCore v0.2.0 — Confidential Agent Runtime");
+    serial_println!("The agent is the interface. The kernel is the guard.");
     serial_println!();
 
-    // Check base revision (non-fatal for now)
-    if BASE_REVISION.is_supported() {
-        serial_println!("[boot] Limine base revision: supported");
-    } else {
-        serial_println!("[boot] WARN: Limine base revision not confirmed (continuing anyway)");
-    }
+    // CPU feature detection (before anything else)
+    serial_print!("[boot] Detecting hardware... ");
+    let hw = hwdetect::detect();
+    serial_println!("OK");
+    hwdetect::log_capabilities(&hw);
+    serial_println!();
 
-    // 2. GDT + TSS
-    serial_print!("[boot] Loading GDT... ");
+    // GDT + TSS (x86_64 hardware requirement)
+    serial_print!("[boot] GDT... ");
     gdt::init();
     serial_println!("OK");
 
-    // 3. IDT + interrupt handlers
-    serial_print!("[boot] Loading IDT... ");
+    // IDT (exception + interrupt handlers)
+    serial_print!("[boot] IDT... ");
     idt::init();
     serial_println!("OK");
 
-    // 4. Initialize PIC and enable hardware interrupts
-    serial_print!("[boot] Initializing interrupts... ");
-    interrupts::init();
-    serial_println!("OK");
+    // APIC (modern interrupt controller)
+    serial_print!("[boot] APIC... ");
+    if hw.apic {
+        let hhdm_offset = HHDM_REQUEST
+            .response()
+            .map(|r| r.offset)
+            .unwrap_or(0);
+        interrupts::init(hhdm_offset);
+        serial_println!("OK");
+    } else {
+        serial_println!("WARN: no APIC detected, interrupts limited");
+    }
 
-    // 5. Memory map + heap allocator
-    serial_print!("[boot] Initializing heap... ");
+    // Heap allocator
+    serial_print!("[boot] Heap... ");
     if let Some(response) = MEMMAP_REQUEST.response() {
         let entries = response.entries();
-        let mut usable_bytes: u64 = 0;
+        let mut usable: u64 = 0;
         for entry in entries {
             if entry.type_ == limine::memmap::MEMMAP_USABLE {
-                usable_bytes += entry.length;
+                usable += entry.length;
             }
         }
         memory::init_heap();
-        serial_println!("OK ({} MB usable RAM)", usable_bytes / (1024 * 1024));
+        serial_println!("OK ({} MB usable)", usable / (1024 * 1024));
     } else {
-        serial_println!("WARN: no memory map from bootloader");
         memory::init_heap();
+        serial_println!("OK (no memory map)");
     }
 
-    // 6. Capability system skeleton
-    serial_print!("[boot] Capability system... ");
-    capability::init();
-    serial_println!("OK (type skeleton loaded)");
+    // Phase 2: Agent architecture
+    serial_println!();
+    serial_println!("[guard] Initializing agent architecture...");
 
-    // 7. Framebuffer banner
+    // Capability table
+    serial_print!("[guard] Capability table... ");
+    // Table is statically initialized, just log
+    serial_println!("OK (4096 slots)");
+
+    // Audit log — record boot event
+    serial_print!("[guard] Audit log... ");
+    audit::log_boot(interrupts::ticks());
+    serial_println!("OK (hash chain initialized)");
+
+    // Agent table
+    serial_print!("[guard] Agent table... ");
+    serial_println!("OK (256 max agents)");
+
+    // Framebuffer
     if let Some(response) = FRAMEBUFFER_REQUEST.response() {
         let fbs = response.framebuffers();
         if !fbs.is_empty() {
             let fb = fbs[0];
             serial_println!(
-                "[boot] Framebuffer: {}x{} @ {} bpp",
-                fb.width,
-                fb.height,
-                fb.bpp
+                "[boot] Display: {}x{} @ {}bpp",
+                fb.width, fb.height, fb.bpp
             );
-            framebuffer::draw_banner(fb);
+            framebuffer::draw_boot_header(fb);
         }
-    } else {
-        serial_println!("[boot] No framebuffer available");
     }
 
-    // 8. Test interrupt (breakpoint)
+    // Boot complete
     serial_println!();
-    serial_println!("[test] Triggering breakpoint exception...");
-    x86_64::instructions::interrupts::int3();
-    serial_println!("[test] Returned from breakpoint — interrupts work!");
-
-    // 9. Boot complete
-    serial_println!();
-    serial_println!("========================================");
+    serial_println!("═══════════════════════════════════════");
     serial_println!("  TuniCore boot complete.");
-    serial_println!("  Entering idle loop (HLT).");
-    serial_println!("  The kernel is the guard.");
-    serial_println!("========================================");
+    serial_println!("  Caps: {} | Agents: {} | Audit: {} events",
+        cap_table::CAP_TABLE.lock().active_count(),
+        agent::AGENT_TABLE.lock().active_count(),
+        audit::AUDIT_LOG.lock().total_events(),
+    );
+    serial_println!("  Awaiting agent deployment...");
+    serial_println!("═══════════════════════════════════════");
 
-    // Idle loop — halt CPU until next interrupt
+    // Idle loop — APIC timer keeps ticking for timeout enforcement
     loop {
         x86_64::instructions::hlt();
     }
 }
 
-/// Panic handler — prints to serial and halts
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     serial_println!();

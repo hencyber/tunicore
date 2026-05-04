@@ -1,126 +1,192 @@
-//! Basic framebuffer rendering for TuniCore boot banner
+//! Minimal framebuffer text console
 //!
-//! Uses the Limine framebuffer to draw a colored banner.
-//! This is intentionally simple — a real graphics stack comes later.
+//! Provides basic text rendering for the boot conversation interface.
+//! No decorations, no gradients — just clean text output.
+//! This will evolve into the agent conversation display.
 
-use limine::framebuffer::Framebuffer;
+/// Basic 8x8 bitmap font for ASCII printable characters (32-126)
+/// Each character is 8 bytes, one byte per row, MSB = leftmost pixel
+static FONT_8X8: &[u8] = include_bytes!("font8x8.bin");
 
-/// Draw the TuniCore boot banner on the framebuffer
-pub fn draw_banner(fb: &limine::framebuffer::Framebuffer) {
-    let width = fb.width as usize;
-    let height = fb.height as usize;
-    let pitch = fb.pitch as usize;
-    let bpp = fb.bpp as usize;
-    let bytes_per_pixel = bpp / 8;
+/// Console colors
+const BG_COLOR: u32 = 0x0A0A1A; // Deep dark blue-black
+const FG_COLOR: u32 = 0x00E5FF; // Cyan (capability accent)
+const PROMPT_COLOR: u32 = 0x7B68EE; // Medium slate blue
 
-    // Safety: Limine guarantees valid framebuffer memory at this address
-    let fb_ptr = fb.address() as *mut u8;
-    let fb_slice = unsafe { core::slice::from_raw_parts_mut(fb_ptr, pitch * height) };
+/// Framebuffer console state
+pub struct Console {
+    /// Raw framebuffer pointer
+    fb_ptr: *mut u8,
+    /// Framebuffer width in pixels
+    width: u32,
+    /// Framebuffer height in pixels
+    height: u32,
+    /// Bytes per scanline
+    pitch: u32,
+    /// Current cursor column (in characters)
+    col: u32,
+    /// Current cursor row (in characters)
+    row: u32,
+    /// Characters per row
+    cols: u32,
+    /// Characters per column
+    rows: u32,
+}
 
-    // Draw a gradient background: deep navy → dark purple
-    // Represents the "AI void" from which the agent emerges
-    for y in 0..height {
-        for x in 0..width {
-            let offset = y * pitch + x * bytes_per_pixel;
-            if offset + 3 > fb_slice.len() {
-                continue;
-            }
+impl Console {
+    /// Create a new console from a Limine framebuffer
+    pub fn new(fb: &limine::framebuffer::Framebuffer) -> Self {
+        let fb_ptr = fb.address() as *mut u8;
+        let width = fb.width as u32;
+        let height = fb.height as u32;
+        let pitch = fb.pitch as u32;
 
-            // Gradient: navy (0x0a0a2e) → purple (0x1a0a3e)
-            let r = (10 + (y * 16 / height)) as u8;
-            let g = (10 + (x * 5 / width)) as u8;
-            let b = (46 + (y * 20 / height)) as u8;
+        let cols = width / 8;
+        let rows = height / 10; // 8px char + 2px line spacing
 
-            // BGRA format (most common for Limine framebuffers)
-            fb_slice[offset] = b;
-            fb_slice[offset + 1] = g;
-            fb_slice[offset + 2] = r;
-            if bytes_per_pixel == 4 {
-                fb_slice[offset + 3] = 0xFF;
+        let mut console = Console {
+            fb_ptr,
+            width,
+            height,
+            pitch,
+            col: 0,
+            row: 0,
+            cols,
+            rows,
+        };
+
+        // Clear screen
+        console.clear();
+        console
+    }
+
+    /// Clear the entire screen
+    pub fn clear(&mut self) {
+        let total_bytes = (self.pitch * self.height) as usize;
+        let fb = unsafe { core::slice::from_raw_parts_mut(self.fb_ptr, total_bytes) };
+
+        // Fill with background color (BGRA)
+        let bg_b = (BG_COLOR & 0xFF) as u8;
+        let bg_g = ((BG_COLOR >> 8) & 0xFF) as u8;
+        let bg_r = ((BG_COLOR >> 16) & 0xFF) as u8;
+
+        for y in 0..self.height as usize {
+            for x in 0..self.width as usize {
+                let offset = y * self.pitch as usize + x * 4;
+                if offset + 3 < total_bytes {
+                    fb[offset] = bg_b;
+                    fb[offset + 1] = bg_g;
+                    fb[offset + 2] = bg_r;
+                    fb[offset + 3] = 0xFF;
+                }
             }
         }
     }
 
-    // Draw a bright accent bar at the top (cyan/teal — capability color)
-    let bar_height = 4.min(height);
-    for y in 0..bar_height {
-        for x in 0..width {
-            let offset = y * pitch + x * bytes_per_pixel;
-            if offset + 3 > fb_slice.len() {
-                continue;
-            }
-            // Cyan accent: #00e5ff
-            fb_slice[offset] = 0xFF; // B
-            fb_slice[offset + 1] = 0xE5; // G
-            fb_slice[offset + 2] = 0x00; // R
-            if bytes_per_pixel == 4 {
-                fb_slice[offset + 3] = 0xFF;
-            }
+    /// Draw a single character at pixel position
+    fn draw_char(&mut self, ch: u8, px: u32, py: u32, color: u32) {
+        if ch < 32 || ch > 126 {
+            return;
         }
-    }
-
-    // Draw a centered horizontal line as a divider (around 1/3 from top)
-    let divider_y = height / 3;
-    let divider_width = width * 2 / 3;
-    let divider_start_x = (width - divider_width) / 2;
-    for x in divider_start_x..(divider_start_x + divider_width) {
-        let offset = divider_y * pitch + x * bytes_per_pixel;
-        if offset + 3 > fb_slice.len() {
-            continue;
+        let idx = (ch - 32) as usize;
+        let glyph_offset = idx * 8;
+        if glyph_offset + 8 > FONT_8X8.len() {
+            return;
         }
-        // Dim cyan line
-        fb_slice[offset] = 0x80; // B
-        fb_slice[offset + 1] = 0x73; // G
-        fb_slice[offset + 2] = 0x00; // R
-        if bytes_per_pixel == 4 {
-            fb_slice[offset + 3] = 0xFF;
-        }
-    }
 
-    // Draw a small "shield" icon in the center (represents capability guard)
-    // Simple pixel art: 8x10 shield shape
-    let shield = [
-        0b01111110u8,
-        0b11111111,
-        0b11111111,
-        0b11111111,
-        0b11111111,
-        0b01111110,
-        0b01111110,
-        0b00111100,
-        0b00111100,
-        0b00011000,
-    ];
+        let total_bytes = (self.pitch * self.height) as usize;
+        let fb = unsafe { core::slice::from_raw_parts_mut(self.fb_ptr, total_bytes) };
 
-    let scale = 6; // Each pixel = 6x6 screen pixels
-    let shield_w = 8 * scale;
-    let shield_h = shield.len() * scale;
-    let start_x = (width - shield_w) / 2;
-    let start_y = height / 2 - shield_h / 2;
+        let r = ((color >> 16) & 0xFF) as u8;
+        let g = ((color >> 8) & 0xFF) as u8;
+        let b = (color & 0xFF) as u8;
 
-    for (row, &bits) in shield.iter().enumerate() {
-        for col in 0..8 {
-            if bits & (1 << (7 - col)) != 0 {
-                // Draw scaled pixel
-                for sy in 0..scale {
-                    for sx in 0..scale {
-                        let px = start_x + col * scale + sx;
-                        let py = start_y + row * scale + sy;
-                        if px < width && py < height {
-                            let offset = py * pitch + px * bytes_per_pixel;
-                            if offset + 3 <= fb_slice.len() {
-                                // Bright cyan for shield
-                                fb_slice[offset] = 0xFF;
-                                fb_slice[offset + 1] = 0xE5;
-                                fb_slice[offset + 2] = 0x00;
-                                if bytes_per_pixel == 4 {
-                                    fb_slice[offset + 3] = 0xFF;
-                                }
-                            }
+        for row in 0..8u32 {
+            let bits = FONT_8X8[glyph_offset + row as usize];
+            for col in 0..8u32 {
+                if bits & (1 << (7 - col)) != 0 {
+                    let x = px + col;
+                    let y = py + row;
+                    if x < self.width && y < self.height {
+                        let offset = (y * self.pitch + x * 4) as usize;
+                        if offset + 3 < total_bytes {
+                            fb[offset] = b;
+                            fb[offset + 1] = g;
+                            fb[offset + 2] = r;
+                            fb[offset + 3] = 0xFF;
                         }
                     }
                 }
             }
         }
     }
+
+    /// Write a string to the console
+    pub fn write_str(&mut self, s: &str, color: u32) {
+        for byte in s.bytes() {
+            match byte {
+                b'\n' => {
+                    self.col = 0;
+                    self.row += 1;
+                    if self.row >= self.rows {
+                        self.scroll();
+                    }
+                }
+                b'\r' => {
+                    self.col = 0;
+                }
+                byte => {
+                    let px = self.col * 8;
+                    let py = self.row * 10;
+                    self.draw_char(byte, px, py, color);
+                    self.col += 1;
+                    if self.col >= self.cols {
+                        self.col = 0;
+                        self.row += 1;
+                        if self.row >= self.rows {
+                            self.scroll();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scroll the console up by one line
+    fn scroll(&mut self) {
+        let line_height = 10u32;
+        let total_bytes = (self.pitch * self.height) as usize;
+        let fb = unsafe { core::slice::from_raw_parts_mut(self.fb_ptr, total_bytes) };
+        let line_bytes = (self.pitch * line_height) as usize;
+
+        // Move everything up
+        let content_bytes = total_bytes.saturating_sub(line_bytes);
+        fb.copy_within(line_bytes..total_bytes, 0);
+
+        // Clear last line with background
+        let bg_b = (BG_COLOR & 0xFF) as u8;
+        let bg_g = ((BG_COLOR >> 8) & 0xFF) as u8;
+        let bg_r = ((BG_COLOR >> 16) & 0xFF) as u8;
+        for i in (content_bytes..total_bytes).step_by(4) {
+            if i + 3 < total_bytes {
+                fb[i] = bg_b;
+                fb[i + 1] = bg_g;
+                fb[i + 2] = bg_r;
+                fb[i + 3] = 0xFF;
+            }
+        }
+
+        self.row = self.rows - 1;
+    }
+}
+
+/// Draw the TuniCore boot header
+pub fn draw_boot_header(fb: &limine::framebuffer::Framebuffer) {
+    let mut console = Console::new(fb);
+
+    // Minimal, clean boot header
+    console.write_str("TuniCore v0.1.0", FG_COLOR);
+    console.write_str("  Confidential Agent Runtime\n", PROMPT_COLOR);
+    console.write_str("  The agent is the interface. The kernel is the guard.\n", 0x666666);
+    console.write_str("\n", FG_COLOR);
 }

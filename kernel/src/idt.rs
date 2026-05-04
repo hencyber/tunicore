@@ -1,14 +1,13 @@
 //! Interrupt Descriptor Table (IDT)
 //!
-//! Defines handlers for CPU exceptions and hardware interrupts.
-//! Uses the x86_64 crate's type-safe IDT builder.
+//! CPU exception handlers + APIC interrupt vectors.
+//! Uses x86_64 crate's type-safe IDT builder.
 
 use crate::serial_println;
 use spin::Lazy;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 
 use crate::gdt;
-use crate::interrupts::InterruptIndex;
 
 /// Static IDT — initialized once, lives for the kernel's lifetime
 static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
@@ -27,9 +26,9 @@ static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     idt.general_protection_fault
         .set_handler_fn(general_protection_handler);
 
-    // Hardware interrupts (PIC)
-    idt[InterruptIndex::Timer.as_u8()].set_handler_fn(crate::interrupts::timer_handler);
-    idt[InterruptIndex::Keyboard.as_u8()].set_handler_fn(crate::interrupts::keyboard_handler);
+    // APIC interrupts (vector 32 = timer, 255 = spurious)
+    idt[32].set_handler_fn(crate::interrupts::timer_handler);
+    idt[0xFF_u8].set_handler_fn(crate::interrupts::spurious_handler);
 
     idt
 });
@@ -41,12 +40,10 @@ pub fn init() {
 
 // ─── Exception Handlers ─────────────────────────────────────────
 
-/// Breakpoint exception (#BP) — used for debugging
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     serial_println!("[exception] BREAKPOINT at {:#?}", stack_frame);
 }
 
-/// Double fault (#DF) — unrecoverable, halt the CPU
 extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
@@ -58,27 +55,25 @@ extern "x86-interrupt" fn double_fault_handler(
     }
 }
 
-/// Page fault (#PF) — log and halt for now
 extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
     use x86_64::registers::control::Cr2;
     serial_println!("!!! PAGE FAULT !!!");
-    serial_println!("  Accessed address: {:?}", Cr2::read());
-    serial_println!("  Error code: {:?}", error_code);
+    serial_println!("  Address: {:?}", Cr2::read());
+    serial_println!("  Error: {:?}", error_code);
     serial_println!("{:#?}", stack_frame);
     loop {
         x86_64::instructions::hlt();
     }
 }
 
-/// General protection fault (#GP) — log and halt
 extern "x86-interrupt" fn general_protection_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    serial_println!("!!! GENERAL PROTECTION FAULT (error_code={}) !!!", error_code);
+    serial_println!("!!! GP FAULT (error_code={}) !!!", error_code);
     serial_println!("{:#?}", stack_frame);
     loop {
         x86_64::instructions::hlt();
