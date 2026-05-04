@@ -18,6 +18,7 @@ pub enum AuditEvent {
     AgentSpawned = 0x10,
     AgentKilled = 0x11,
     AgentTimeout = 0x12,
+    AgentOverBudget = 0x13,
     EscalationAttempt = 0x100,
     KernelBoot = 0x1000,
 }

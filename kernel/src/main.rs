@@ -25,6 +25,8 @@ mod resource;
 mod cap_table;
 mod agent;
 mod audit;
+mod syscall;
+mod guardian;
 
 use core::panic::PanicInfo;
 use limine::request::{FramebufferRequest, HhdmRequest, MemmapRequest};
@@ -61,7 +63,7 @@ static _END: limine::RequestsEndMarker = limine::RequestsEndMarker::new();
 extern "C" fn kmain() -> ! {
     // Phase 1: Hardware foundation
     serial::init();
-    serial_println!("TuniCore v0.2.0 — Confidential Agent Runtime");
+    serial_println!("TuniCore v0.3.0 — Confidential Agent Runtime");
     serial_println!("The agent is the interface. The kernel is the guard.");
     serial_println!();
 
@@ -143,16 +145,19 @@ extern "C" fn kmain() -> ! {
         }
     }
 
-    // Boot complete
+    // Phase 3: Launch guardian agent
+    guardian::run();
+
+    // Final status
     serial_println!();
     serial_println!("═══════════════════════════════════════");
-    serial_println!("  TuniCore boot complete.");
+    serial_println!("  TuniCore v0.3.0 — fully operational.");
     serial_println!("  Caps: {} | Agents: {} | Audit: {} events",
         cap_table::CAP_TABLE.lock().active_count(),
         agent::AGENT_TABLE.lock().active_count(),
         audit::AUDIT_LOG.lock().total_events(),
     );
-    serial_println!("  Awaiting agent deployment...");
+    serial_println!("  The kernel is the guard.");
     serial_println!("═══════════════════════════════════════");
 
     // Idle loop — APIC timer keeps ticking for timeout enforcement
