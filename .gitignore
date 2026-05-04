@@ -1,0 +1,20 @@
+# Build artifacts
+/kernel/target/
+/iso_root/
+/*.iso
+
+# External dependencies (re-fetchable)
+/limine/
+/edk2-ovmf/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.directory
+Thumbs.db
