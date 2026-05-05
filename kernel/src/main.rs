@@ -28,6 +28,7 @@ mod audit;
 mod syscall;
 mod channel;
 mod virtfs;
+mod klog;
 mod intent;
 mod guardian;
 mod wasm_runtime;
@@ -70,6 +71,7 @@ extern "C" fn kmain() -> ! {
     serial_println!("TuniCore v0.5.0 — Confidential Agent Runtime");
     serial_println!("The agent is the interface. The kernel is the guard.");
     serial_println!();
+    klog::boot("TuniCore v0.5.0 starting");
 
     // CPU feature detection (before anything else)
     serial_print!("[boot] Detecting hardware... ");
@@ -77,16 +79,19 @@ extern "C" fn kmain() -> ! {
     serial_println!("OK");
     hwdetect::log_capabilities(&hw);
     serial_println!();
+    klog::boot("Hardware detected: x86_64");
 
     // GDT + TSS (x86_64 hardware requirement)
     serial_print!("[boot] GDT... ");
     gdt::init();
     serial_println!("OK");
+    klog::boot("GDT initialized");
 
     // IDT (exception + interrupt handlers)
     serial_print!("[boot] IDT... ");
     idt::init();
     serial_println!("OK");
+    klog::boot("IDT initialized");
 
     // APIC (modern interrupt controller)
     serial_print!("[boot] APIC... ");
@@ -97,8 +102,10 @@ extern "C" fn kmain() -> ! {
             .unwrap_or(0);
         interrupts::init(hhdm_offset);
         serial_println!("OK");
+        klog::boot("x2APIC enabled (MSR mode)");
     } else {
         serial_println!("WARN: no APIC detected, interrupts limited");
+        klog::warn("No APIC detected");
     }
 
     // Heap allocator
@@ -113,10 +120,12 @@ extern "C" fn kmain() -> ! {
         }
         memory::init_heap();
         serial_println!("OK ({} MB usable)", usable / (1024 * 1024));
+        klog::boot("Heap: 32 MiB static allocator");
 
         // Page frame allocator — real physical memory management
         serial_print!("[boot] PMM... ");
         memory::init_page_alloc(entries);
+        klog::boot("PMM: bitmap page frame allocator");
     } else {
         memory::init_heap();
         serial_println!("OK (no memory map)");
@@ -125,6 +134,7 @@ extern "C" fn kmain() -> ! {
     // Phase 2: Agent architecture
     serial_println!();
     serial_println!("[guard] Initializing agent architecture...");
+    klog::boot("Agent architecture initializing");
 
     // Capability table
     serial_print!("[guard] Capability table... ");

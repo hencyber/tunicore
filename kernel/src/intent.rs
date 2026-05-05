@@ -52,6 +52,7 @@ pub fn execute(input: &str) {
         "top" | "t" => cmd_top(),
         "gc" => cmd_gc(),
         "uptime" | "u" => cmd_uptime(),
+        "dmesg" => cmd_dmesg(args),
         "clear" => cmd_clear(),
         "about" => cmd_about(),
         _ => {
@@ -82,6 +83,7 @@ fn cmd_help() {
     serial_println!("  top  (t)        System dashboard");
     serial_println!("  gc              Clean dead processes");
     serial_println!("  uptime (u)      Time since boot");
+    serial_println!("  dmesg [n]       Kernel message log");
     serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
@@ -408,8 +410,21 @@ fn cmd_uptime() {
 }
 
 fn cmd_clear() {
-    // ANSI escape: clear screen + cursor home
     serial_println!("\x1B[2J\x1B[H");
+}
+
+fn cmd_dmesg(args: &str) {
+    let n: usize = args.parse().unwrap_or(20);
+    let klog = crate::klog::KLOG.lock();
+    serial_println!("  Kernel log ({} total, showing last {}):", klog.total(), n);
+    serial_println!("  {:>6} {:>4} {}", "TICK", "LVL", "MESSAGE");
+    serial_println!("  {:>6} {:>4} {}", "────", "───", "───────");
+    for entry in klog.recent(n) {
+        if entry.valid {
+            serial_println!("  {:>6} {:>4} {}",
+                entry.tick, entry.level.tag(), entry.message());
+        }
+    }
 }
 
 fn cmd_about() {

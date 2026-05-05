@@ -38,6 +38,7 @@ pub fn execute_agent(
 ) -> Result<(), &'static str> {
     let tick = interrupts::ticks();
     serial_println!("[wasm] Loading agent: \"{}\" ({} bytes)", name, wasm_bytes.len());
+    crate::klog::agent(name);
 
     // 1. Spawn agent
     let agent_id = {
