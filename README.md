@@ -49,7 +49,7 @@ Every hobby OS copies Unix. TuniCore doesn't.
 |  Serial <-> AI API                              |
 +------------------+------------------------------+
 |  NLP Intent      |  WASM Agent Runtime           |
-|  SE+EN parsing   |  wasmi interpreter            |
+|  EN+SE parsing   |  wasmi interpreter            |
 |  Levenshtein     |  8 host functions              |
 |  Smart suggest   |  6 built-in agents             |
 +------------------+------------------------------+
@@ -68,7 +68,7 @@ Every hobby OS copies Unix. TuniCore doesn't.
 ## Features
 
 ### Conversational Shell (37 commands + NLP)
-- **Bilingual NLP**: Swedish and English natural language parsing
+- **NLP: English natural language parsing (Swedish also supported)
 - **Smart Suggestions**: Typo -> Levenshtein edit distance -> "Did you mean...?"
 - **Command History**: Ring buffer with `!!` repeat
 - **User Aliases**: `alias deploy-all run writer analyzer greeter`
@@ -165,7 +165,7 @@ tools/
 | 1-4 | Boot, GDT, IDT, Heap, Serial | Done |
 | 5-7 | Capability system, Agent table, Audit | Done |
 | 8-10 | WASM runtime, VirtFS, Intent parser | Done |
-| 11-13 | NLP (SE+EN), Hardware detect, Agent I/O | Done |
+| 11-13 | NLP (EN+SE), Hardware detect, Agent I/O | Done |
 | 14-15 | IPC channels, Pipe orchestration | Done |
 | 16-18 | Env store, Workflows, Aliases | Done |
 | 19-20 | Agent config access, Command history | Done |
