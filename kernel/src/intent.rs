@@ -49,6 +49,10 @@ pub fn execute(input: &str) {
         "touch" => cmd_touch(args),
         "mem" | "m" => cmd_mem(),
         "kill" => cmd_kill(args),
+        "top" | "t" => cmd_top(),
+        "gc" => cmd_gc(),
+        "uptime" | "u" => cmd_uptime(),
+        "clear" => cmd_clear(),
         "about" => cmd_about(),
         _ => {
             serial_println!("  Unknown command: '{}'. Type 'help' for commands.", cmd);
@@ -75,6 +79,10 @@ fn cmd_help() {
     serial_println!("  tick            APIC tick counter");
     serial_println!("  mem  (m)        Physical memory stats");
     serial_println!("  kill <pid>      Terminate agent");
+    serial_println!("  top  (t)        System dashboard");
+    serial_println!("  gc              Clean dead processes");
+    serial_println!("  uptime (u)      Time since boot");
+    serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
 }
@@ -342,6 +350,66 @@ fn cmd_pipe(args: &str) {
     }
 
     serial_println!("  ─── Pipeline complete ───");
+}
+
+fn cmd_top() {
+    use crate::agent::AgentState;
+
+    let tick = interrupts::ticks();
+    let secs = tick / 120; // rough: ~120 ticks/sec at our APIC rate
+    let agents_table = AGENT_TABLE.lock();
+    let active = agents_table.active_count();
+    let total = agents_table.total_spawned();
+    let mut dead = 0u32;
+    for a in agents_table.iter() {
+        if a.state == AgentState::Terminated { dead += 1; }
+    }
+    drop(agents_table);
+
+    let caps = CAP_TABLE.lock().active_count();
+    let audit = AUDIT_LOG.lock().total_events();
+    let mem = crate::memory::page_alloc::stats();
+    let fs = FS.lock();
+    let files = fs.file_count();
+    let fs_bytes = fs.total_size();
+    drop(fs);
+
+    serial_println!("  ══════ TuniCore v0.5.0 ══════");
+    serial_println!("  Uptime: ~{}s   Tick: {}", secs, tick);
+    serial_println!("  CPU:    x86_64 (1 core)");
+    serial_println!("  ─────────────────────────────");
+    serial_println!("  PROCS   {} run, {} dead, {} total", active, dead, total);
+    serial_println!("  RAM     {} MiB total, {} MiB free", mem.total_mb(), mem.free_mb());
+    serial_println!("  HEAP    32 MiB static");
+    serial_println!("  FS      {} files ({} B)", files, fs_bytes);
+    serial_println!("  CAPS    {} active / 4096 max", caps);
+    serial_println!("  AUDIT   {} events", audit);
+    serial_println!("  ═════════════════════════════");
+}
+
+fn cmd_gc() {
+    let before = {
+        let table = AGENT_TABLE.lock();
+        let mut dead = 0usize;
+        for a in table.iter() {
+            if a.state == crate::agent::AgentState::Terminated { dead += 1; }
+        }
+        dead
+    };
+    AGENT_TABLE.lock().gc();
+    serial_println!("  Cleaned {} dead processes", before);
+}
+
+fn cmd_uptime() {
+    let tick = interrupts::ticks();
+    let secs = tick / 120;
+    let mins = secs / 60;
+    serial_println!("  Uptime: ~{}m {}s ({} ticks)", mins, secs % 60, tick);
+}
+
+fn cmd_clear() {
+    // ANSI escape: clear screen + cursor home
+    serial_println!("\x1B[2J\x1B[H");
 }
 
 fn cmd_about() {
