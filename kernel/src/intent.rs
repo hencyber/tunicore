@@ -30,35 +30,152 @@ pub fn execute(input: &str) {
     let mut parts = trimmed.splitn(2, ' ');
     let cmd = parts.next().unwrap_or("");
     let args = parts.next().unwrap_or("").trim();
+    // Try exact command match first
+    let handled = match cmd {
+        "help" | "?" => { cmd_help(); true },
+        "status" | "s" => { cmd_status(); true },
+        "ps" => { cmd_ps(); true },
+        "agents" | "a" => { cmd_agents(); true },
+        "caps" | "c" => { cmd_caps(); true },
+        "audit" => { cmd_audit(args); true },
+        "deploy" | "d" => { cmd_deploy(args); true },
+        "pipe" | "p" => { cmd_pipe(args); true },
+        "send" => { cmd_send(args); true },
+        "tick" => { cmd_tick(); true },
+        "ls" => { cmd_ls(); true },
+        "cat" => { cmd_cat(args); true },
+        "write" | "w" => { cmd_write(args); true },
+        "rm" => { cmd_rm(args); true },
+        "touch" => { cmd_touch(args); true },
+        "mem" | "m" => { cmd_mem(); true },
+        "kill" => { cmd_kill(args); true },
+        "top" | "t" => { cmd_top(); true },
+        "gc" => { cmd_gc(); true },
+        "uptime" | "u" => { cmd_uptime(); true },
+        "dmesg" => { cmd_dmesg(args); true },
+        "clear" => { cmd_clear(); true },
+        "about" => { cmd_about(); true },
+        _ => false,
+    };
 
-    match cmd {
-        "help" | "?" => cmd_help(),
-        "status" | "s" => cmd_status(),
-        "ps" => cmd_ps(),
-        "agents" | "a" => cmd_agents(),
-        "caps" | "c" => cmd_caps(),
-        "audit" => cmd_audit(args),
-        "deploy" | "d" => cmd_deploy(args),
-        "pipe" | "p" => cmd_pipe(args),
-        "send" => cmd_send(args),
-        "tick" => cmd_tick(),
-        "ls" => cmd_ls(),
-        "cat" => cmd_cat(args),
-        "write" | "w" => cmd_write(args),
-        "rm" => cmd_rm(args),
-        "touch" => cmd_touch(args),
-        "mem" | "m" => cmd_mem(),
-        "kill" => cmd_kill(args),
-        "top" | "t" => cmd_top(),
-        "gc" => cmd_gc(),
-        "uptime" | "u" => cmd_uptime(),
-        "dmesg" => cmd_dmesg(args),
-        "clear" => cmd_clear(),
-        "about" => cmd_about(),
-        _ => {
-            serial_println!("  Unknown command: '{}'. Type 'help' for commands.", cmd);
+    if !handled {
+        // Fuzzy natural language matching
+        fuzzy_intent(trimmed);
+    }
+}
+
+/// Natural language intent matching
+///
+/// Maps keyword patterns to commands. Supports Swedish + English.
+fn fuzzy_intent(input: &str) {
+    // Normalize: lowercase for matching
+    let mut buf = [0u8; 128];
+    let n = input.len().min(127);
+    buf[..n].copy_from_slice(&input.as_bytes()[..n]);
+    // Manual ASCII lowercase
+    for b in buf[..n].iter_mut() {
+        if *b >= b'A' && *b <= b'Z' {
+            *b += 32;
         }
     }
+    let lower = core::str::from_utf8(&buf[..n]).unwrap_or("");
+
+    // Extract potential argument (last word that looks like a name/number)
+    let last_word = input.split_whitespace().last().unwrap_or("");
+
+    // --- System queries (check BEFORE file ops to avoid false matches) ---
+    if contains_any(lower, &["process", "vilka kor", "vad kor", "what's running", "whats running"]) {
+        cmd_ps();
+        return;
+    }
+
+    if contains_any(lower, &["minne", "memory", "ram", "hur mycket minne"]) {
+        cmd_mem();
+        return;
+    }
+
+    if contains_any(lower, &["status", "overview", "dashboard"]) {
+        cmd_top();
+        return;
+    }
+
+    if contains_any(lower, &["uptime", "hur lange", "how long", "tid"]) {
+        cmd_uptime();
+        return;
+    }
+
+    if contains_any(lower, &["kernel log", "boot log", "system log", "logg"]) {
+        cmd_dmesg("20");
+        return;
+    }
+
+    if contains_any(lower, &["capabilities", "rattigheter", "behorighe"]) {
+        cmd_caps();
+        return;
+    }
+
+    if contains_any(lower, &["audit", "gransk", "historik"]) {
+        cmd_audit("5");
+        return;
+    }
+
+    if contains_any(lower, &["clean", "rensa", "garbage", "stada"]) {
+        cmd_gc();
+        return;
+    }
+
+    if contains_any(lower, &["help", "hjalp", "kommandon", "commands", "vad kan"]) {
+        cmd_help();
+        return;
+    }
+
+    if contains_any(lower, &["about", "version", "info", "vad ar du", "vad ar tunicore"]) {
+        cmd_about();
+        return;
+    }
+
+    // --- File operations ---
+    if contains_any(lower, &["visa filer", "show file", "list file", "visa alla filer", "vilka filer"]) {
+        cmd_ls();
+        return;
+    }
+
+    // "visa <file>" / "read <file>" / "show <file>"
+    if contains_any(lower, &["visa ", "read ", "show "]) {
+        cmd_cat(last_word);
+        return;
+    }
+
+    // "ta bort <file>" / "delete <file>" / "radera <file>"
+    if contains_any(lower, &["ta bort", "delete", "radera", "remove"]) {
+        cmd_rm(last_word);
+        return;
+    }
+
+    // --- Agent operations ---
+    if contains_any(lower, &["deploy ", "starta ", "start "]) ||
+       (contains_any(lower, &["agent"]) && contains_any(lower, &["run", "start", "launch"])) {
+        cmd_deploy(last_word);
+        return;
+    }
+
+    if contains_any(lower, &["kill ", "terminate "]) ||
+       contains_any(lower, &["stang av", "avsluta"]) {
+        cmd_kill(last_word);
+        return;
+    }
+
+    serial_println!("  '{}' — I don't understand. Try 'help' or ask naturally.", input);
+}
+
+/// Check if haystack contains any of the needles
+fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+    for needle in needles {
+        if haystack.contains(needle) {
+            return true;
+        }
+    }
+    false
 }
 
 fn cmd_help() {
