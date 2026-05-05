@@ -27,6 +27,7 @@ mod agent;
 mod audit;
 mod syscall;
 mod channel;
+mod virtfs;
 mod intent;
 mod guardian;
 mod wasm_runtime;
@@ -66,7 +67,7 @@ static _END: limine::RequestsEndMarker = limine::RequestsEndMarker::new();
 extern "C" fn kmain() -> ! {
     // Phase 1: Hardware foundation
     serial::init();
-    serial_println!("TuniCore v0.4.0 — Confidential Agent Runtime");
+    serial_println!("TuniCore v0.5.0 — Confidential Agent Runtime");
     serial_println!("The agent is the interface. The kernel is the guard.");
     serial_println!();
 

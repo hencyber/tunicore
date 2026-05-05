@@ -15,6 +15,7 @@ use crate::agent::AGENT_TABLE;
 use crate::audit::AUDIT_LOG;
 use crate::cap_table::CAP_TABLE;
 use crate::channel::CHANNELS;
+use crate::virtfs::FS;
 use crate::interrupts;
 use crate::serial_println;
 
@@ -39,6 +40,11 @@ pub fn execute(input: &str) {
         "deploy" | "d" => cmd_deploy(args),
         "send" => cmd_send(args),
         "tick" => cmd_tick(),
+        "ls" => cmd_ls(),
+        "cat" => cmd_cat(args),
+        "write" | "w" => cmd_write(args),
+        "rm" => cmd_rm(args),
+        "touch" => cmd_touch(args),
         _ => {
             serial_println!("  Unknown command: '{}'. Type 'help' for commands.", cmd);
         }
@@ -52,9 +58,14 @@ fn cmd_help() {
     serial_println!("  agents (a)      List active agents");
     serial_println!("  caps   (c)      List capabilities");
     serial_println!("  audit [n]       Show last n audit events");
-    serial_println!("  deploy <name>   Deploy WASM agent (hello|sender|receiver)");
-    serial_println!("  send <msg>      Send message to channel:0");
-    serial_println!("  tick            Show APIC tick counter");
+    serial_println!("  deploy <name>   Deploy WASM agent");
+    serial_println!("  send <msg>      Send to channel:0");
+    serial_println!("  ls              List files");
+    serial_println!("  cat <file>      Show file contents");
+    serial_println!("  write <f> <d>   Write data to file");
+    serial_println!("  touch <file>    Create empty file");
+    serial_println!("  rm <file>       Delete file");
+    serial_println!("  tick            APIC tick counter");
     serial_println!("  help (?)        This message");
 }
 
@@ -63,21 +74,20 @@ fn cmd_status() {
     let caps = CAP_TABLE.lock().active_count();
     let agents = AGENT_TABLE.lock().active_count();
     let audit = AUDIT_LOG.lock().total_events();
-    let channels = {
-        let ch = CHANNELS.lock();
-        // Count channels with messages
-        let mut with_msgs = 0u32;
-        // We can't easily iterate, just report basic info
-        with_msgs
-    };
+    let fs = FS.lock();
+    let files = fs.file_count();
+    let fs_size = fs.total_size();
+    drop(fs);
 
     serial_println!("  ┌─────────────────────────────┐");
-    serial_println!("  │ TuniCore v0.4.0             │");
+    serial_println!("  │ TuniCore v0.5.0             │");
     serial_println!("  ├─────────────────────────────┤");
     serial_println!("  │ Tick:    {:<19} │", tick);
     serial_println!("  │ Agents:  {:<19} │", agents);
     serial_println!("  │ Caps:    {:<19} │", caps);
     serial_println!("  │ Audit:   {:<19} │", audit);
+    serial_println!("  │ Files:   {:<19} │", files);
+    serial_println!("  │ FS used: {:<15} B   │", fs_size);
     serial_println!("  └─────────────────────────────┘");
 }
 
@@ -185,4 +195,81 @@ fn ensure_channel_0() -> u64 {
         return 0;
     }
     channels.create().unwrap_or(0)
+}
+
+fn cmd_ls() {
+    let fs = FS.lock();
+    let files = fs.list();
+    if files.is_empty() {
+        serial_println!("  (empty filesystem)");
+        return;
+    }
+    serial_println!("  {:20} {:>8}  {:>8}", "NAME", "SIZE", "TICK");
+    serial_println!("  {:20} {:>8}  {:>8}", "────", "────", "────");
+    for f in files {
+        serial_println!("  {:20} {:>6} B  t={}", f.name, f.size(), f.modified_at);
+    }
+    serial_println!("  {} files, {} bytes total", fs.file_count(), fs.total_size());
+}
+
+fn cmd_cat(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: cat <filename>");
+        return;
+    }
+    let fs = FS.lock();
+    match fs.read(args) {
+        Some(data) => {
+            if let Ok(text) = core::str::from_utf8(data) {
+                serial_println!("{}", text);
+            } else {
+                serial_println!("  ({} bytes, binary)", data.len());
+            }
+        }
+        None => serial_println!("  File '{}' not found", args),
+    }
+}
+
+fn cmd_write(args: &str) {
+    // Format: write <filename> <content>
+    let mut parts = args.splitn(2, ' ');
+    let name = parts.next().unwrap_or("");
+    let content = parts.next().unwrap_or("");
+
+    if name.is_empty() {
+        serial_println!("  Usage: write <filename> <content>");
+        return;
+    }
+
+    let tick = interrupts::ticks();
+    let mut fs = FS.lock();
+    match fs.write(name, content.as_bytes(), tick) {
+        Ok(()) => serial_println!("  Wrote {} bytes to '{}'", content.len(), name),
+        Err(e) => serial_println!("  Write failed: {}", e),
+    }
+}
+
+fn cmd_touch(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: touch <filename>");
+        return;
+    }
+    let tick = interrupts::ticks();
+    let mut fs = FS.lock();
+    match fs.touch(args, tick) {
+        Ok(()) => serial_println!("  Created '{}'", args),
+        Err(e) => serial_println!("  Touch failed: {}", e),
+    }
+}
+
+fn cmd_rm(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: rm <filename>");
+        return;
+    }
+    let mut fs = FS.lock();
+    match fs.remove(args) {
+        Ok(()) => serial_println!("  Removed '{}'", args),
+        Err(e) => serial_println!("  Remove failed: {}", e),
+    }
 }

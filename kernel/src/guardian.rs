@@ -211,7 +211,7 @@ pub fn run() -> ! {
     // 9. Enter interactive intent mode — "talk to your OS"
     serial_println!();
     serial_println!("═══════════════════════════════════════");
-    serial_println!("  TuniCore v0.4.0 — Intent Layer");
+    serial_println!("  TuniCore v0.5.0 — Intent Layer");
     serial_println!("  Type 'help' for commands.");
     serial_println!("═══════════════════════════════════════");
     serial_println!();
