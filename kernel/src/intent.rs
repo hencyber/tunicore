@@ -272,7 +272,13 @@ fn fuzzy_intent(input: &str) {
         return;
     }
 
-    serial_println!("  '{}' — I don't understand. Try 'help' or ask naturally.", input);
+    // Smart suggestion — find closest command
+    let first = input.split_whitespace().next().unwrap_or("");
+    if let Some(suggestion) = suggest_command(first) {
+        serial_println!("  Unknown: '{}'. Did you mean '{}'?", first, suggestion);
+    } else {
+        serial_println!("  '{}' — I don't understand. Try 'help' or ask naturally.", input);
+    }
 }
 
 /// Check if haystack contains any of the needles
@@ -283,6 +289,54 @@ fn contains_any(haystack: &str, needles: &[&str]) -> bool {
         }
     }
     false
+}
+
+/// Simple edit distance (Levenshtein) for short strings
+fn edit_distance(a: &[u8], b: &[u8]) -> usize {
+    let (m, n) = (a.len(), b.len());
+    if m == 0 { return n; }
+    if n == 0 { return m; }
+    if n >= 31 { return n; }
+
+    let mut prev = [0usize; 32];
+    let mut curr = [0usize; 32];
+    for j in 0..=n { prev[j] = j; }
+
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a[i-1] == b[j-1] { 0 } else { 1 };
+            curr[j] = (prev[j] + 1).min(curr[j-1] + 1).min(prev[j-1] + cost);
+        }
+        for j in 0..=n { prev[j] = curr[j]; }
+    }
+    curr[n]
+}
+
+/// Suggest closest known command
+fn suggest_command(input: &str) -> Option<&'static str> {
+    const COMMANDS: &[&str] = &[
+        "help", "status", "ps", "agents", "caps", "audit",
+        "deploy", "pipe", "send", "tick", "ls", "cat",
+        "write", "rm", "touch", "mem", "kill", "top",
+        "gc", "uptime", "dmesg", "set", "get", "unset",
+        "env", "run", "alias", "unalias", "aliases",
+        "history", "clear", "about",
+    ];
+
+    let mut best: Option<&str> = None;
+    let mut best_dist = usize::MAX;
+    let input_bytes = input.as_bytes();
+
+    for &cmd in COMMANDS {
+        let d = edit_distance(input_bytes, cmd.as_bytes());
+        if d < best_dist {
+            best_dist = d;
+            best = Some(cmd);
+        }
+    }
+
+    if best_dist <= 2 && best_dist > 0 { best } else { None }
 }
 
 fn cmd_help() {
