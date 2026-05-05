@@ -314,10 +314,12 @@ fn cmd_deploy(name: &str) {
     static SENDER_WASM: &[u8] = include_bytes!("sender_agent.wasm");
     static RECEIVER_WASM: &[u8] = include_bytes!("receiver_agent.wasm");
     static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
+    static ANALYZER_WASM: &[u8] = include_bytes!("analyzer_agent.wasm");
 
     let (wasm, chan_w, chan_r) = match name {
         "hello" => (HELLO_WASM, None, None),
         "writer" => (WRITER_WASM, None, None),
+        "analyzer" => (ANALYZER_WASM, None, None),
         "sender" => {
             let chan_id = ensure_channel_0();
             (SENDER_WASM, Some(chan_id), None)
@@ -415,11 +417,13 @@ fn cmd_pipe(args: &str) {
     static SENDER_WASM: &[u8] = include_bytes!("sender_agent.wasm");
     static RECEIVER_WASM: &[u8] = include_bytes!("receiver_agent.wasm");
     static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
+    static ANALYZER_WASM: &[u8] = include_bytes!("analyzer_agent.wasm");
 
     let wasm_a = match agent_a {
         "hello" => Some(HELLO_WASM),
         "sender" => Some(SENDER_WASM),
         "writer" => Some(WRITER_WASM),
+        "analyzer" => Some(ANALYZER_WASM),
         _ => None,
     };
 
@@ -427,6 +431,7 @@ fn cmd_pipe(args: &str) {
         "hello" => Some(HELLO_WASM),
         "receiver" => Some(RECEIVER_WASM),
         "writer" => Some(WRITER_WASM),
+        "analyzer" => Some(ANALYZER_WASM),
         _ => None,
     };
 
