@@ -3,6 +3,10 @@
 > **The world's first conversational operating system.**
 > No GUI. No terminal commands to memorize. Just talk to it.
 
+<p align="center">
+  <img src="docs/demo.svg" alt="TuniCore Demo" width="820">
+</p>
+
 TuniCore is a bare-metal x86_64 operating system written in Rust where the primary interface is natural language. Instead of memorizing `ls -la`, you say *"show my files"*. Instead of scripting in Bash, you teach it with *"alias report run writer analyzer"*. And when it doesn't understand? It asks AI.
 
 ```
