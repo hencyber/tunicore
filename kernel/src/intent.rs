@@ -15,6 +15,7 @@ use crate::agent::AGENT_TABLE;
 use crate::audit::AUDIT_LOG;
 use crate::cap_table::CAP_TABLE;
 use crate::channel::CHANNELS;
+use crate::env::ENV;
 use crate::virtfs::FS;
 use crate::interrupts;
 use crate::serial_println;
@@ -53,6 +54,10 @@ pub fn execute(input: &str) {
         "gc" => { cmd_gc(); true },
         "uptime" | "u" => { cmd_uptime(); true },
         "dmesg" => { cmd_dmesg(args); true },
+        "set" => { cmd_set(args); true },
+        "get" => { cmd_get(args); true },
+        "unset" => { cmd_unset(args); true },
+        "env" | "e" => { cmd_env(); true },
         "clear" => { cmd_clear(); true },
         "about" => { cmd_about(); true },
         _ => false,
@@ -134,6 +139,11 @@ fn fuzzy_intent(input: &str) {
         return;
     }
 
+    if contains_any(lower, &["environment", "variabler", "env var", "config", "konfigura", "installningar"]) {
+        cmd_env();
+        return;
+    }
+
     // --- File operations ---
     if contains_any(lower, &["visa filer", "show file", "list file", "visa alla filer", "vilka filer"]) {
         cmd_ls();
@@ -151,6 +161,7 @@ fn fuzzy_intent(input: &str) {
         cmd_rm(last_word);
         return;
     }
+
 
     // --- Agent operations ---
     if contains_any(lower, &["deploy ", "starta ", "start "]) ||
@@ -201,6 +212,10 @@ fn cmd_help() {
     serial_println!("  gc              Clean dead processes");
     serial_println!("  uptime (u)      Time since boot");
     serial_println!("  dmesg [n]       Kernel message log");
+    serial_println!("  set <k> <v>     Set environment var");
+    serial_println!("  get <key>       Get environment var");
+    serial_println!("  unset <key>     Remove environment var");
+    serial_println!("  env  (e)        List all env vars");
     serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
@@ -529,6 +544,53 @@ fn cmd_uptime() {
     let secs = tick / 120;
     let mins = secs / 60;
     serial_println!("  Uptime: ~{}m {}s ({} ticks)", mins, secs % 60, tick);
+}
+
+fn cmd_set(args: &str) {
+    let mut parts = args.splitn(2, ' ');
+    let key = parts.next().unwrap_or("");
+    let val = parts.next().unwrap_or("");
+    if key.is_empty() {
+        serial_println!("  Usage: set <key> <value>");
+        return;
+    }
+    match ENV.lock().set(key, val) {
+        Ok(()) => serial_println!("  {} = {}", key, val),
+        Err(e) => serial_println!("  Error: {}", e),
+    }
+}
+
+fn cmd_get(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: get <key>");
+        return;
+    }
+    match ENV.lock().get(args) {
+        Some(val) => serial_println!("  {} = {}", args, val),
+        None => serial_println!("  '{}' not set", args),
+    }
+}
+
+fn cmd_unset(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: unset <key>");
+        return;
+    }
+    if ENV.lock().unset(args) {
+        serial_println!("  Removed '{}'", args);
+    } else {
+        serial_println!("  '{}' not found", args);
+    }
+}
+
+fn cmd_env() {
+    let env = ENV.lock();
+    serial_println!("  Environment ({} vars):", env.len());
+    serial_println!("  {:16} {}", "KEY", "VALUE");
+    serial_println!("  {:16} {}", "───", "─────");
+    for (k, v) in env.iter() {
+        serial_println!("  {:16} {}", k, v);
+    }
 }
 
 fn cmd_clear() {

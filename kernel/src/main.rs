@@ -29,6 +29,7 @@ mod syscall;
 mod channel;
 mod virtfs;
 mod klog;
+mod env;
 mod intent;
 mod guardian;
 mod wasm_runtime;
@@ -146,9 +147,14 @@ extern "C" fn kmain() -> ! {
     audit::log_boot(interrupts::ticks());
     serial_println!("OK (hash chain initialized)");
 
-    // Agent table
     serial_print!("[guard] Agent table... ");
     serial_println!("OK (256 max agents)");
+
+    // Environment store
+    serial_print!("[guard] Environment... ");
+    env::init_defaults();
+    serial_println!("OK (6 vars)");
+    klog::boot("Environment store initialized");
 
     // Framebuffer
     if let Some(response) = FRAMEBUFFER_REQUEST.response() {
