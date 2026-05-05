@@ -8,8 +8,8 @@
 
 use linked_list_allocator::LockedHeap;
 
-/// Heap size: 1 MiB — sufficient for Phase 1
-const HEAP_SIZE: usize = 1024 * 1024;
+/// Heap size: 32 MiB — needed for wasmi WASM runtime + multi-agent
+const HEAP_SIZE: usize = 32 * 1024 * 1024;
 
 /// Static heap backing store
 /// Aligned to page boundary for future compatibility

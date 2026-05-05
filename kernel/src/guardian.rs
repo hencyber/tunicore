@@ -153,23 +153,60 @@ pub fn run() {
     serial_println!();
     syscall::system_status(agent_id);
 
-    // 7. Launch a WASM agent — the real sandboxed execution
+    // 7. WASM sandbox test — single agent
     serial_println!();
-    serial_println!("[guardian] ─── WASM Agent Sandbox Test ───");
+    serial_println!("[guardian] ─── WASM Sandbox Test ───");
 
     static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
 
-    match crate::wasm_runtime::execute_agent("hello.wasm", HELLO_WASM, Some(agent_id)) {
-        Ok(()) => {
-            serial_println!("[guardian] WASM agent executed successfully in sandbox.");
-        }
-        Err(e) => {
-            serial_println!("[guardian] WASM agent failed: {}", e);
+    match crate::wasm_runtime::execute_agent("hello.wasm", HELLO_WASM, Some(agent_id), None, None) {
+        Ok(()) => serial_println!("[guardian] Single agent: OK ✓"),
+        Err(e) => serial_println!("[guardian] Single agent failed: {}", e),
+    }
+
+    // 8. Multi-agent channel test
+    serial_println!();
+    serial_println!("[guardian] ─── Multi-Agent Channel Test ───");
+
+    // Create a channel
+    let chan_id = {
+        let mut channels = crate::channel::CHANNELS.lock();
+        channels.create().unwrap_or(0)
+    };
+    serial_println!("[guardian] Created channel:{}", chan_id);
+
+    // Sender agent writes to channel
+    static SENDER_WASM: &[u8] = include_bytes!("sender_agent.wasm");
+    match crate::wasm_runtime::execute_agent(
+        "sender.wasm", SENDER_WASM, Some(agent_id),
+        Some(chan_id), None,
+    ) {
+        Ok(()) => serial_println!("[guardian] Sender agent: OK ✓"),
+        Err(e) => serial_println!("[guardian] Sender failed: {}", e),
+    }
+
+    // Check channel state
+    {
+        let channels = crate::channel::CHANNELS.lock();
+        if let Some(ch) = channels.get(chan_id) {
+            serial_println!("[guardian] Channel:{} has {} messages", chan_id, ch.message_count());
         }
     }
 
+    // Receiver agent reads from channel
+    static RECEIVER_WASM: &[u8] = include_bytes!("receiver_agent.wasm");
+    match crate::wasm_runtime::execute_agent(
+        "receiver.wasm", RECEIVER_WASM, Some(agent_id),
+        None, Some(chan_id),
+    ) {
+        Ok(()) => serial_println!("[guardian] Receiver agent: OK ✓"),
+        Err(e) => serial_println!("[guardian] Receiver failed: {}", e),
+    }
+
+    // Final status
     serial_println!();
-    serial_println!("[guardian] All tests passed. Kernel agent operational.");
+    syscall::system_status(agent_id);
+    serial_println!("[guardian] All tests passed. Multi-agent system operational.");
 }
 
 fn log_grant(name: &str, result: &SyscallResult) {

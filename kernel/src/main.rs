@@ -26,6 +26,7 @@ mod cap_table;
 mod agent;
 mod audit;
 mod syscall;
+mod channel;
 mod guardian;
 mod wasm_runtime;
 
