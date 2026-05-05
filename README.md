@@ -9,12 +9,12 @@ TuniCore is a bare-metal x86_64 operating system written in Rust where the prima
 tc> show configuration
   hostname = tunicore
   version  = 0.6.0
-  owner    = cybercore
+  owner    = tuncore
   lang     = sv-SE
 
 tc> deploy greeter
   [agent:5] env_get('hostname') = tunicore
-  [agent:5] env_get('owner') = cybercore
+  [agent:5] env_get('owner') = tuncore
   [agent:5] Wrote 80 bytes to 'greeting.md'
   Greeting generated!
 
@@ -94,7 +94,7 @@ Every hobby OS copies Unix. TuniCore doesn't.
 ```
   OS        TuniCore v0.6.0
   Host      tunicore
-  Owner     cybercore
+  Owner     tuncore
   Arch      x86_64
   Uptime    ~0m 5s
   Shell     intent/v2
