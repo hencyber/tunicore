@@ -343,7 +343,7 @@ fn cmd_audit(args: &str) {
 fn cmd_deploy(name: &str) {
     if name.is_empty() {
         serial_println!("  Usage: deploy <agent-name>");
-        serial_println!("  Available: hello, sender, receiver, writer");
+        serial_println!("  Available: hello, sender, receiver, writer, analyzer, greeter");
         return;
     }
 
@@ -355,11 +355,13 @@ fn cmd_deploy(name: &str) {
     static RECEIVER_WASM: &[u8] = include_bytes!("receiver_agent.wasm");
     static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
     static ANALYZER_WASM: &[u8] = include_bytes!("analyzer_agent.wasm");
+    static GREETER_WASM: &[u8] = include_bytes!("greeter_agent.wasm");
 
     let (wasm, chan_w, chan_r) = match name {
         "hello" => (HELLO_WASM, None, None),
         "writer" => (WRITER_WASM, None, None),
         "analyzer" => (ANALYZER_WASM, None, None),
+        "greeter" => (GREETER_WASM, None, None),
         "sender" => {
             let chan_id = ensure_channel_0();
             (SENDER_WASM, Some(chan_id), None)
@@ -458,12 +460,14 @@ fn cmd_pipe(args: &str) {
     static RECEIVER_WASM: &[u8] = include_bytes!("receiver_agent.wasm");
     static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
     static ANALYZER_WASM: &[u8] = include_bytes!("analyzer_agent.wasm");
+    static GREETER_WASM: &[u8] = include_bytes!("greeter_agent.wasm");
 
     let wasm_a = match agent_a {
         "hello" => Some(HELLO_WASM),
         "sender" => Some(SENDER_WASM),
         "writer" => Some(WRITER_WASM),
         "analyzer" => Some(ANALYZER_WASM),
+        "greeter" => Some(GREETER_WASM),
         _ => None,
     };
 
@@ -472,6 +476,7 @@ fn cmd_pipe(args: &str) {
         "receiver" => Some(RECEIVER_WASM),
         "writer" => Some(WRITER_WASM),
         "analyzer" => Some(ANALYZER_WASM),
+        "greeter" => Some(GREETER_WASM),
         _ => None,
     };
 
@@ -632,6 +637,7 @@ fn cmd_run(args: &str) {
     static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
     static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
     static ANALYZER_WASM: &[u8] = include_bytes!("analyzer_agent.wasm");
+    static GREETER_WASM: &[u8] = include_bytes!("greeter_agent.wasm");
 
     let mut ok = 0u32;
     let mut fail = 0u32;
@@ -643,6 +649,7 @@ fn cmd_run(args: &str) {
             "hello" => Some(HELLO_WASM),
             "writer" => Some(WRITER_WASM),
             "analyzer" => Some(ANALYZER_WASM),
+            "greeter" => Some(GREETER_WASM),
             _ => None,
         };
 

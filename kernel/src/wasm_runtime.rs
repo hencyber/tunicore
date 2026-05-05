@@ -7,6 +7,7 @@
 //! - tc.chan_recv(id, ptr, len) -> i32          — receive from channel
 //! - tc.fs_write(p_ptr, p_len, d_ptr, d_len)   — write file to VirtFS
 //! - tc.fs_read(p_ptr, p_len, buf_ptr, buf_len) — read file from VirtFS
+//! - tc.env_get(k_ptr, k_len, buf_ptr, buf_len) — read env variable
 
 use wasmi::{Caller, Engine, Extern, Func, Linker, Module, Store, TypedFunc};
 
@@ -15,6 +16,7 @@ use crate::audit::{AuditEvent, AUDIT_LOG};
 use crate::cap_table::{AgentId, CapHandle, CAP_TABLE};
 use crate::capability::types::Rights;
 use crate::channel::{self, Message, CHANNELS};
+use crate::env::ENV;
 use crate::virtfs::FS;
 use crate::interrupts;
 use crate::resource::ResourceRef;
@@ -265,6 +267,40 @@ pub fn execute_agent(
             -1
         }),
     ).map_err(|_| "link tc.fs_read")?;
+
+    // ─── Host function: tc.env_get ───
+    linker.define("tc", "env_get",
+        Func::wrap(&mut store, |mut caller: Caller<'_, HostState>, key_ptr: i32, key_len: i32, buf_ptr: i32, buf_len: i32| -> i32 {
+            let aid = caller.data().agent_id;
+            if let Some(mem) = caller.get_export("memory").and_then(Extern::into_memory) {
+                let mut key_buf = [0u8; 64];
+                let kn = (key_len as usize).min(63);
+                if mem.read(&caller, key_ptr as usize, &mut key_buf[..kn]).is_ok() {
+                    if let Ok(key) = core::str::from_utf8(&key_buf[..kn]) {
+                        let mut val_buf = [0u8; 128];
+                        let val_len = {
+                            let env = ENV.lock();
+                            if let Some(val) = env.get(key) {
+                                let n = val.len().min(128);
+                                val_buf[..n].copy_from_slice(val.as_bytes());
+                                n
+                            } else {
+                                0
+                            }
+                        };
+                        if val_len > 0 {
+                            let n = val_len.min(buf_len as usize);
+                            if mem.write(&mut caller, buf_ptr as usize, &val_buf[..n]).is_ok() {
+                                serial_println!("[agent:{}] env_get('{}') = {} bytes", aid.0, key, n);
+                                return n as i32;
+                            }
+                        }
+                    }
+                }
+            }
+            -1
+        }),
+    ).map_err(|_| "link tc.env_get")?;
 
     // 6. Instantiate and run
     let instance = linker.instantiate_and_start(&mut store, &module)
