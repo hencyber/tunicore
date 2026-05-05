@@ -113,6 +113,10 @@ extern "C" fn kmain() -> ! {
         }
         memory::init_heap();
         serial_println!("OK ({} MB usable)", usable / (1024 * 1024));
+
+        // Page frame allocator — real physical memory management
+        serial_print!("[boot] PMM... ");
+        memory::init_page_alloc(entries);
     } else {
         memory::init_heap();
         serial_println!("OK (no memory map)");

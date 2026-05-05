@@ -46,6 +46,7 @@ pub fn execute(input: &str) {
         "write" | "w" => cmd_write(args),
         "rm" => cmd_rm(args),
         "touch" => cmd_touch(args),
+        "mem" | "m" => cmd_mem(),
         "about" => cmd_about(),
         _ => {
             serial_println!("  Unknown command: '{}'. Type 'help' for commands.", cmd);
@@ -69,6 +70,7 @@ fn cmd_help() {
     serial_println!("  touch <file>    Create empty file");
     serial_println!("  rm <file>       Delete file");
     serial_println!("  tick            APIC tick counter");
+    serial_println!("  mem  (m)        Physical memory stats");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
 }
@@ -191,6 +193,22 @@ fn cmd_send(args: &str) {
 
 fn cmd_tick() {
     serial_println!("  APIC tick: {}", interrupts::ticks());
+}
+
+fn cmd_mem() {
+    let stats = crate::memory::page_alloc::stats();
+    serial_println!("  ┌─────────────────────────────┐");
+    serial_println!("  │ Physical Memory              │");
+    serial_println!("  ├─────────────────────────────┤");
+    serial_println!("  │ Total:   {:>5} MiB ({:>7}) │", stats.total_mb(), stats.total);
+    serial_println!("  │ Used:    {:>5} MiB ({:>7}) │", stats.used_mb(), stats.used);
+    serial_println!("  │ Free:    {:>5} MiB ({:>7}) │", stats.free_mb(), stats.free);
+    serial_println!("  │ Page:    4 KiB               │");
+    serial_println!("  └─────────────────────────────┘");
+
+    let fs = FS.lock();
+    serial_println!("  VirtFS: {} files, {} bytes", fs.file_count(), fs.total_size());
+    serial_println!("  Heap:   32 MiB (static)");
 }
 
 fn cmd_pipe(args: &str) {
