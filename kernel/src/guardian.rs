@@ -153,6 +153,21 @@ pub fn run() {
     serial_println!();
     syscall::system_status(agent_id);
 
+    // 7. Launch a WASM agent — the real sandboxed execution
+    serial_println!();
+    serial_println!("[guardian] ─── WASM Agent Sandbox Test ───");
+
+    static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
+
+    match crate::wasm_runtime::execute_agent("hello.wasm", HELLO_WASM, Some(agent_id)) {
+        Ok(()) => {
+            serial_println!("[guardian] WASM agent executed successfully in sandbox.");
+        }
+        Err(e) => {
+            serial_println!("[guardian] WASM agent failed: {}", e);
+        }
+    }
+
     serial_println!();
     serial_println!("[guardian] All tests passed. Kernel agent operational.");
 }

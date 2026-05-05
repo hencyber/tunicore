@@ -27,6 +27,7 @@ mod agent;
 mod audit;
 mod syscall;
 mod guardian;
+mod wasm_runtime;
 
 use core::panic::PanicInfo;
 use limine::request::{FramebufferRequest, HhdmRequest, MemmapRequest};
