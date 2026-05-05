@@ -31,6 +31,7 @@ mod virtfs;
 mod klog;
 mod env;
 mod alias;
+mod llm;
 mod intent;
 mod guardian;
 mod wasm_runtime;

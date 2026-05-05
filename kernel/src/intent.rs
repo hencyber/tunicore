@@ -155,6 +155,7 @@ pub fn execute(input: &str) {
         "unalias" => { cmd_unalias(args); true },
         "aliases" => { cmd_aliases(); true },
         "history" | "h" => { cmd_history(args); true },
+        "ask" => { cmd_ask(args); true },
         "clear" => { cmd_clear(); true },
         "about" => { cmd_about(); true },
         _ => false,
@@ -278,7 +279,16 @@ fn fuzzy_intent(input: &str) {
     if let Some(suggestion) = suggest_command(first) {
         serial_println!("  Unknown: '{}'. Did you mean '{}'?", first, suggestion);
     } else {
-        serial_println!("  '{}' — I don't understand. Try 'help' or ask naturally.", input);
+        // LLM fallback — ask AI if no command matched
+        serial_println!("  \u{1F914} Thinking...");
+        match crate::llm::query(input) {
+            Ok(response) => {
+                serial_println!("  {}", response);
+            }
+            Err(_e) => {
+                serial_println!("  '{}' — I don't understand. Try 'help' or 'ask <question>'.", input);
+            }
+        }
     }
 }
 
@@ -374,6 +384,7 @@ fn cmd_help() {
     serial_println!("  history (h) [n] Command history");
     serial_println!("  !!              Repeat last command");
     serial_println!("  sysinfo         System identity card");
+    serial_println!("  ask <question>  Ask TuniCore AI");
     serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
@@ -935,6 +946,24 @@ fn cmd_sysinfo() {
     serial_println!("  Agents    6 built-in (hello, writer, analyzer, greeter, sender, receiver)");
     serial_println!("  Commands  36 exact + NLP fuzzy");
     serial_println!();
+}
+
+fn cmd_ask(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: ask <question>");
+        serial_println!("  Example: ask vad är Rust?");
+        return;
+    }
+    serial_println!("  \u{1F914} Thinking...");
+    match crate::llm::query(args) {
+        Ok(response) => {
+            serial_println!("  {}", response);
+        }
+        Err(e) => {
+            serial_println!("  AI unavailable: {}", e);
+            serial_println!("  Start the bridge: python3 tools/llm_bridge.py");
+        }
+    }
 }
 
 fn cmd_clear() {
