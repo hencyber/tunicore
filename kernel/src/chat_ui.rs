@@ -1,21 +1,19 @@
-//! Chat UI - conversational interface on the framebuffer
+//! Chat UI v3 - Professional conversational interface
 //!
-//! Makes TuniCore feel like a messaging app, not a terminal.
-//! System messages appear on the left, user messages on the right.
-//! Simple, clean, designed for non-technical users.
+//! Design principles:
+//! - Centered content column (max 640px) like iMessage/WhatsApp
+//! - 8x16 font at 2x = 16x32 effective pixels - large, crisp, readable
+//! - High contrast bubbles against dark background
+//! - Generous whitespace and padding
+//! - Clear visual hierarchy: header > messages > input
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use spin::Mutex;
 
-/// Chat message types
 #[derive(Clone, Copy)]
-pub enum Sender {
-    System,
-    User,
-}
+pub enum Sender { System, User }
 
-/// A single chat message
 #[derive(Clone)]
 pub struct Message {
     pub sender: Sender,
@@ -30,13 +28,11 @@ impl Message {
         data[..len].copy_from_slice(&text.as_bytes()[..len]);
         Self { sender, data, len }
     }
-
     fn as_str(&self) -> &str {
         core::str::from_utf8(&self.data[..self.len]).unwrap_or("")
     }
 }
 
-/// Chat UI state
 pub struct ChatUI {
     fb_ptr: usize,
     width: u32,
@@ -49,36 +45,34 @@ pub struct ChatUI {
 
 unsafe impl Send for ChatUI {}
 
-// Modern color palette
-const BG: u32         = 0x0F0F1A;  // Very dark blue-black
-const HEADER_BG: u32  = 0x161625;  // Header background
-const HEADER_LINE: u32= 0x2A2A45;  // Subtle separator line
-const SYS_BG: u32     = 0x1E1E35;  // System bubble - subtle dark
-const USER_BG: u32    = 0x3B5BDB;  // User bubble - rich blue
-const INPUT_BG: u32   = 0x161625;  // Input area background
-const INPUT_FIELD: u32= 0x1C1C32;  // Input field background
-const INPUT_BORDER: u32= 0x2A2A50; // Input field border
-const TEXT_PRIMARY: u32= 0xE4E4F0; // Primary text - bright
-const TEXT_SECONDARY: u32 = 0x9090B0; // Secondary/dim text
-const TEXT_ACCENT: u32 = 0x7B93FF; // Accent text (TuniCore title)
-const CURSOR_CLR: u32 = 0x7B93FF;  // Cursor color
+// === Color Palette (high contrast, modern) ===
+const BG_MAIN: u32    = 0x0C0C18;  // Deep space black
+const BG_SIDEBAR: u32 = 0x101020;  // Slightly lighter sides
+const HEADER_BG: u32  = 0x14142A;  // Header
+const HEADER_ACCENT: u32 = 0x5B7FFF; // Title color
+const DIVIDER: u32    = 0x252545;  // Lines
+const SYS_BUBBLE: u32 = 0x1C1C38;  // System - visible against BG
+const SYS_BORDER: u32 = 0x2E2E55;  // System bubble border
+const USR_BUBBLE: u32 = 0x2952CC;  // User - strong blue
+const USR_BORDER: u32 = 0x3D66E6;  // User bubble highlight edge
+const INPUT_BG: u32   = 0x14142A;  // Input bar
+const FIELD_BG: u32   = 0x0C0C18;  // Input field
+const FIELD_BORDER: u32 = 0x3A3A60; // Input border
+const TXT_BRIGHT: u32 = 0xEAEAF6;  // Primary text
+const TXT_DIM: u32    = 0x7878A0;  // Placeholder/secondary
+const CURSOR: u32     = 0x5B7FFF;  // Cursor
 
-/// Font scale: 2x (each pixel drawn as 2x2)
-const FONT_SCALE: u32 = 2;
-/// Character width at 2x
-const CHAR_W: u32 = 8 * FONT_SCALE;   // 16px
-/// Character height at 2x  
-const CHAR_H: u32 = 8 * FONT_SCALE;   // 16px
+// Font: 8x16 at 2x scale = 16x32 per character
+static FONT: &[u8] = include_bytes!("font8x16.bin");
+const SCALE: u32 = 2;
+const CW: u32 = 8 * SCALE;  // 16px char width
+const CH: u32 = 16 * SCALE; // 32px char height
 
-/// Font data
-static FONT_8X8: &[u8] = include_bytes!("font8x8.bin");
-
-/// Global chat UI instance
 pub static CHAT: Mutex<Option<ChatUI>> = Mutex::new(None);
 
 impl ChatUI {
     pub fn init(fb: &limine::framebuffer::Framebuffer) {
-        let ui = ChatUI {
+        *CHAT.lock() = Some(ChatUI {
             fb_ptr: fb.address() as usize,
             width: fb.width as u32,
             height: fb.height as u32,
@@ -86,8 +80,7 @@ impl ChatUI {
             messages: Vec::new(),
             input_buf: [0u8; 200],
             input_len: 0,
-        };
-        *CHAT.lock() = Some(ui);
+        });
     }
 
     pub fn system_msg(&mut self, text: &str) {
@@ -108,13 +101,11 @@ impl ChatUI {
                     .unwrap_or("").to_string();
                 self.user_msg(&cmd);
                 self.input_len = 0;
-                self.render();
                 Some(cmd)
             }
             8 | 0x7F => {
                 if self.input_len > 0 { self.input_len -= 1; }
-                self.render();
-                None
+                self.render(); None
             }
             0x20..=0x7E => {
                 if self.input_len < 199 {
@@ -133,170 +124,151 @@ impl ChatUI {
         let h = self.height;
         let p = self.pitch;
         let fb = self.fb_ptr as *mut u8;
-        let total = (p * h) as usize;
+        let t = (p * h) as usize;
 
-        // === Background ===
-        fill_rect(fb, p, total, w, h, 0, 0, w, h, BG);
+        // Content column: centered, max 700px
+        let col_w = 700u32.min(w - 40);
+        let col_x = (w - col_w) / 2;
 
-        // === Header (56px tall) ===
-        let header_h = 56u32;
-        fill_rect(fb, p, total, w, h, 0, 0, w, header_h, HEADER_BG);
-        // Separator line
-        fill_rect(fb, p, total, w, h, 0, header_h - 1, w, 1, HEADER_LINE);
-        // Title "TuniCore" - left
-        draw_text_2x(fb, p, total, w, h, "TuniCore", 24, 18, TEXT_ACCENT);
-        // Subtitle - center
-        let sub = "Just type what you need";
-        let sub_x = (w / 2).saturating_sub((sub.len() as u32 * CHAR_W) / 2);
-        draw_text_2x(fb, p, total, w, h, sub, sub_x, 18, TEXT_SECONDARY);
+        // --- Clear entire screen ---
+        rect(fb, p, t, w, h, 0, 0, w, h, BG_MAIN);
 
-        // === Input bar (64px tall) at bottom ===
-        let input_bar_h = 64u32;
-        let input_y = h.saturating_sub(input_bar_h);
-        fill_rect(fb, p, total, w, h, 0, input_y, w, input_bar_h, INPUT_BG);
-        // Separator line at top of input
-        fill_rect(fb, p, total, w, h, 0, input_y, w, 1, HEADER_LINE);
-        // Input field with border
-        let field_x = 24u32;
-        let field_y = input_y + 14;
-        let field_w = w.saturating_sub(48);
-        let field_h = 36u32;
-        // Border (1px)
-        fill_rect(fb, p, total, w, h, field_x - 1, field_y - 1, field_w + 2, field_h + 2, INPUT_BORDER);
-        // Field background
-        fill_rect(fb, p, total, w, h, field_x, field_y, field_w, field_h, INPUT_FIELD);
+        // --- Header: 70px ---
+        let hdr_h = 70u32;
+        rect(fb, p, t, w, h, 0, 0, w, hdr_h, HEADER_BG);
+        rect(fb, p, t, w, h, 0, hdr_h - 1, w, 1, DIVIDER);
+        // Title
+        text16(fb, p, t, w, h, "TuniCore", col_x, 20, HEADER_ACCENT);
+        // Version badge
+        let ver = "v0.6.0";
+        let vx = col_x + 9 * CW;
+        text16(fb, p, t, w, h, ver, vx, 20, TXT_DIM);
+
+        // --- Input bar: 80px at bottom ---
+        let inp_h = 80u32;
+        let inp_y = h.saturating_sub(inp_h);
+        rect(fb, p, t, w, h, 0, inp_y, w, inp_h, INPUT_BG);
+        rect(fb, p, t, w, h, 0, inp_y, w, 1, DIVIDER);
+
+        // Input field
+        let fy = inp_y + 20;
+        let fh = 40u32;
+        // Border
+        rect(fb, p, t, w, h, col_x - 1, fy - 1, col_w + 2, fh + 2, FIELD_BORDER);
+        // Background
+        rect(fb, p, t, w, h, col_x, fy, col_w, fh, FIELD_BG);
 
         if self.input_len == 0 {
-            draw_text_2x(fb, p, total, w, h, "Type a message...", field_x + 12, field_y + 10, TEXT_SECONDARY);
+            text16(fb, p, t, w, h, "Type a message...", col_x + 16, fy + 5, TXT_DIM);
         } else {
-            let txt = core::str::from_utf8(&self.input_buf[..self.input_len]).unwrap_or("");
-            draw_text_2x(fb, p, total, w, h, txt, field_x + 12, field_y + 10, TEXT_PRIMARY);
-            // Blinking cursor
-            let cx = field_x + 12 + (self.input_len as u32 * CHAR_W);
-            fill_rect(fb, p, total, w, h, cx, field_y + 8, 2, 20, CURSOR_CLR);
+            let s = core::str::from_utf8(&self.input_buf[..self.input_len]).unwrap_or("");
+            text16(fb, p, t, w, h, s, col_x + 16, fy + 5, TXT_BRIGHT);
+            let cx = col_x + 16 + self.input_len as u32 * CW;
+            rect(fb, p, t, w, h, cx, fy + 4, 2, CH, CURSOR);
         }
 
-        // === Messages area ===
-        let msg_top = header_h + 16;
-        let msg_bottom = input_y.saturating_sub(16);
-        let bubble_h = 40u32;      // Height of each bubble
-        let bubble_gap = 12u32;     // Gap between bubbles
-        let bubble_pad_x = 16u32;   // Horizontal padding inside bubble
-        let bubble_pad_y = 12u32;   // Vertical padding inside bubble
-        let max_msgs = ((msg_bottom - msg_top) / (bubble_h + bubble_gap)) as usize;
+        // --- Messages ---
+        let msg_top = hdr_h + 20;
+        let msg_bot = inp_y.saturating_sub(12);
+        let bub_h = CH + 20; // bubble height = text + padding
+        let gap = 16u32;
+        let max_msgs = ((msg_bot - msg_top) / (bub_h + gap)) as usize;
 
-        let start = if self.messages.len() > max_msgs {
-            self.messages.len() - max_msgs
-        } else {
-            0
-        };
-
+        let start = self.messages.len().saturating_sub(max_msgs);
         let mut y = msg_top;
+
         for i in start..self.messages.len() {
+            if y + bub_h > msg_bot { break; }
             let msg = &self.messages[i];
-            let text = msg.as_str();
-            let text_w = text.len() as u32 * CHAR_W;
-            let bw = text_w + bubble_pad_x * 2;
-            let bw = bw.min(w - 48); // Max width
+            let s = msg.as_str();
+            let tw = s.len() as u32 * CW;
+            let bw = (tw + 32).min(col_w);
 
             match msg.sender {
                 Sender::System => {
-                    // Left-aligned bubble
-                    let bx = 24u32;
-                    // Bubble with rounded feel (3-rect approach)
-                    draw_bubble(fb, p, total, w, h, bx, y, bw, bubble_h, SYS_BG);
-                    draw_text_2x(fb, p, total, w, h, text, bx + bubble_pad_x, y + bubble_pad_y, TEXT_PRIMARY);
+                    let bx = col_x;
+                    // Border (1px)
+                    bubble(fb, p, t, w, h, bx, y, bw + 2, bub_h + 2, SYS_BORDER);
+                    // Fill
+                    bubble(fb, p, t, w, h, bx + 1, y + 1, bw, bub_h, SYS_BUBBLE);
+                    text16(fb, p, t, w, h, s, bx + 16, y + 10, TXT_BRIGHT);
                 }
                 Sender::User => {
-                    // Right-aligned bubble
-                    let bx = w.saturating_sub(bw + 24);
-                    draw_bubble(fb, p, total, w, h, bx, y, bw, bubble_h, USER_BG);
-                    draw_text_2x(fb, p, total, w, h, text, bx + bubble_pad_x, y + bubble_pad_y, TEXT_PRIMARY);
+                    let bx = col_x + col_w - bw;
+                    // Border
+                    bubble(fb, p, t, w, h, bx - 2, y, bw + 2, bub_h + 2, USR_BORDER);
+                    // Fill
+                    bubble(fb, p, t, w, h, bx - 1, y + 1, bw, bub_h, USR_BUBBLE);
+                    text16(fb, p, t, w, h, s, bx + 14, y + 10, TXT_BRIGHT);
                 }
             }
-            y += bubble_h + bubble_gap;
+            y += bub_h + gap;
         }
     }
 }
 
 // === Drawing primitives ===
 
-fn fill_rect(fb: *mut u8, pitch: u32, total: usize, max_w: u32, max_h: u32,
-             x: u32, y: u32, w: u32, h: u32, color: u32) {
-    let r = ((color >> 16) & 0xFF) as u8;
-    let g = ((color >> 8) & 0xFF) as u8;
-    let b = (color & 0xFF) as u8;
-    let sl = unsafe { core::slice::from_raw_parts_mut(fb, total) };
-
-    for py in y..y.saturating_add(h).min(max_h) {
-        for px in x..x.saturating_add(w).min(max_w) {
-            let off = (py * pitch + px * 4) as usize;
-            if off + 3 < total {
-                sl[off] = b; sl[off+1] = g; sl[off+2] = r; sl[off+3] = 0xFF;
-            }
+fn rect(fb: *mut u8, p: u32, t: usize, mw: u32, mh: u32,
+        x: u32, y: u32, w: u32, h: u32, c: u32) {
+    let (cr, cg, cb) = ((c >> 16) as u8, ((c >> 8) & 0xFF) as u8, (c & 0xFF) as u8);
+    let sl = unsafe { core::slice::from_raw_parts_mut(fb, t) };
+    for py in y..y.saturating_add(h).min(mh) {
+        for px in x..x.saturating_add(w).min(mw) {
+            let o = (py * p + px * 4) as usize;
+            if o + 3 < t { sl[o] = cb; sl[o+1] = cg; sl[o+2] = cr; sl[o+3] = 0xFF; }
         }
     }
 }
 
-/// Draw a bubble shape (simulated rounded corners)
-fn draw_bubble(fb: *mut u8, pitch: u32, total: usize, max_w: u32, max_h: u32,
-               x: u32, y: u32, w: u32, h: u32, color: u32) {
-    let r = 4u32; // corner radius
-    // Main body
-    fill_rect(fb, pitch, total, max_w, max_h, x + r, y, w.saturating_sub(r * 2), h, color);
-    // Left/right strips
-    fill_rect(fb, pitch, total, max_w, max_h, x, y + r, r, h.saturating_sub(r * 2), color);
-    fill_rect(fb, pitch, total, max_w, max_h, x + w.saturating_sub(r), y + r, r, h.saturating_sub(r * 2), color);
-    // Corner fills (small rects to approximate)
-    fill_rect(fb, pitch, total, max_w, max_h, x + 1, y + 1, r, r, color);
-    fill_rect(fb, pitch, total, max_w, max_h, x + w.saturating_sub(r + 1), y + 1, r, r, color);
-    fill_rect(fb, pitch, total, max_w, max_h, x + 1, y + h.saturating_sub(r + 1), r, r, color);
-    fill_rect(fb, pitch, total, max_w, max_h, x + w.saturating_sub(r + 1), y + h.saturating_sub(r + 1), r, r, color);
+fn bubble(fb: *mut u8, p: u32, t: usize, mw: u32, mh: u32,
+          x: u32, y: u32, w: u32, h: u32, c: u32) {
+    let r = 6u32;
+    rect(fb, p, t, mw, mh, x + r, y, w.saturating_sub(r*2), h, c);
+    rect(fb, p, t, mw, mh, x, y + r, w, h.saturating_sub(r*2), c);
+    // Corners (graduated for smoother look)
+    rect(fb, p, t, mw, mh, x+2, y+1, r-1, r-1, c);
+    rect(fb, p, t, mw, mh, x+1, y+2, r-1, r-1, c);
+    rect(fb, p, t, mw, mh, x+w-r-1, y+1, r-1, r-1, c);
+    rect(fb, p, t, mw, mh, x+w-r, y+2, r-1, r-1, c);
+    rect(fb, p, t, mw, mh, x+2, y+h-r, r-1, r-1, c);
+    rect(fb, p, t, mw, mh, x+1, y+h-r-1, r-1, r-1, c);
+    rect(fb, p, t, mw, mh, x+w-r-1, y+h-r, r-1, r-1, c);
+    rect(fb, p, t, mw, mh, x+w-r, y+h-r-1, r-1, r-1, c);
 }
 
-/// Draw text at 2x scale (each font pixel becomes 2x2 screen pixels)
-fn draw_text_2x(fb: *mut u8, pitch: u32, total: usize, max_w: u32, max_h: u32,
-                s: &str, x: u32, y: u32, color: u32) {
-    let r = ((color >> 16) & 0xFF) as u8;
-    let g = ((color >> 8) & 0xFF) as u8;
-    let b = (color & 0xFF) as u8;
-    let sl = unsafe { core::slice::from_raw_parts_mut(fb, total) };
-
+fn text16(fb: *mut u8, p: u32, t: usize, mw: u32, mh: u32,
+          s: &str, x: u32, y: u32, c: u32) {
+    let (cr, cg, cb) = ((c >> 16) as u8, ((c >> 8) & 0xFF) as u8, (c & 0xFF) as u8);
+    let sl = unsafe { core::slice::from_raw_parts_mut(fb, t) };
     let mut cx = x;
     for byte in s.bytes() {
         if byte < 32 || byte > 126 { continue; }
         let idx = (byte - 32) as usize;
-        let glyph_off = idx * 8;
-        if glyph_off + 8 > FONT_8X8.len() { continue; }
-
-        for row in 0..8u32 {
-            let bits = FONT_8X8[glyph_off + row as usize];
+        let off = idx * 16;
+        if off + 16 > FONT.len() { continue; }
+        for row in 0..16u32 {
+            let bits = FONT[off + row as usize];
             for col in 0..8u32 {
                 if bits & (1 << (7 - col)) != 0 {
-                    // Draw 2x2 block for each pixel
-                    for sy in 0..FONT_SCALE {
-                        for sx in 0..FONT_SCALE {
-                            let px = cx + col * FONT_SCALE + sx;
-                            let py = y + row * FONT_SCALE + sy;
-                            if px < max_w && py < max_h {
-                                let off = (py * pitch + px * 4) as usize;
-                                if off + 3 < total {
-                                    sl[off] = b; sl[off+1] = g; sl[off+2] = r; sl[off+3] = 0xFF;
-                                }
+                    for sy in 0..SCALE {
+                        for sx in 0..SCALE {
+                            let px = cx + col * SCALE + sx;
+                            let py = y + row * SCALE + sy;
+                            if px < mw && py < mh {
+                                let o = (py * p + px * 4) as usize;
+                                if o+3 < t { sl[o]=cb; sl[o+1]=cg; sl[o+2]=cr; sl[o+3]=0xFF; }
                             }
                         }
                     }
                 }
             }
         }
-        cx += CHAR_W;
-        if cx + CHAR_W > max_w { break; }
+        cx += CW;
+        if cx + CW > mw { break; }
     }
 }
 
-/// Public API for adding system messages
 pub fn system_msg(text: &str) {
-    if let Some(ref mut ui) = *CHAT.lock() {
-        ui.system_msg(text);
-    }
+    if let Some(ref mut ui) = *CHAT.lock() { ui.system_msg(text); }
 }
