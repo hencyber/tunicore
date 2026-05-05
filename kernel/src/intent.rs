@@ -38,6 +38,7 @@ pub fn execute(input: &str) {
         "caps" | "c" => cmd_caps(),
         "audit" => cmd_audit(args),
         "deploy" | "d" => cmd_deploy(args),
+        "pipe" | "p" => cmd_pipe(args),
         "send" => cmd_send(args),
         "tick" => cmd_tick(),
         "ls" => cmd_ls(),
@@ -45,6 +46,7 @@ pub fn execute(input: &str) {
         "write" | "w" => cmd_write(args),
         "rm" => cmd_rm(args),
         "touch" => cmd_touch(args),
+        "about" => cmd_about(),
         _ => {
             serial_println!("  Unknown command: '{}'. Type 'help' for commands.", cmd);
         }
@@ -59,6 +61,7 @@ fn cmd_help() {
     serial_println!("  caps   (c)      List capabilities");
     serial_println!("  audit [n]       Show last n audit events");
     serial_println!("  deploy <name>   Deploy WASM agent");
+    serial_println!("  pipe <a> <b>    Chain: a → channel → b");
     serial_println!("  send <msg>      Send to channel:0");
     serial_println!("  ls              List files");
     serial_println!("  cat <file>      Show file contents");
@@ -66,6 +69,7 @@ fn cmd_help() {
     serial_println!("  touch <file>    Create empty file");
     serial_println!("  rm <file>       Delete file");
     serial_println!("  tick            APIC tick counter");
+    serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
 }
 
@@ -187,6 +191,109 @@ fn cmd_send(args: &str) {
 
 fn cmd_tick() {
     serial_println!("  APIC tick: {}", interrupts::ticks());
+}
+
+fn cmd_pipe(args: &str) {
+    let mut parts = args.splitn(2, ' ');
+    let agent_a = parts.next().unwrap_or("").trim();
+    let agent_b = parts.next().unwrap_or("").trim();
+
+    if agent_a.is_empty() || agent_b.is_empty() {
+        serial_println!("  Usage: pipe <sender> <receiver>");
+        serial_println!("  Example: pipe sender receiver");
+        return;
+    }
+
+    serial_println!("  ─── Pipeline: {} → {} ───", agent_a, agent_b);
+
+    // Create a fresh channel for this pipeline
+    let chan_id = {
+        let mut channels = CHANNELS.lock();
+        match channels.create() {
+            Ok(id) => id,
+            Err(_) => {
+                serial_println!("  Failed to create pipeline channel");
+                return;
+            }
+        }
+    };
+    serial_println!("  Created channel:{}", chan_id);
+
+    // Resolve WASM bytes
+    static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
+    static SENDER_WASM: &[u8] = include_bytes!("sender_agent.wasm");
+    static RECEIVER_WASM: &[u8] = include_bytes!("receiver_agent.wasm");
+    static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
+
+    let wasm_a = match agent_a {
+        "hello" => Some(HELLO_WASM),
+        "sender" => Some(SENDER_WASM),
+        "writer" => Some(WRITER_WASM),
+        _ => None,
+    };
+
+    let wasm_b = match agent_b {
+        "hello" => Some(HELLO_WASM),
+        "receiver" => Some(RECEIVER_WASM),
+        "writer" => Some(WRITER_WASM),
+        _ => None,
+    };
+
+    if wasm_a.is_none() {
+        serial_println!("  Unknown agent: '{}'", agent_a);
+        return;
+    }
+    if wasm_b.is_none() {
+        serial_println!("  Unknown agent: '{}'", agent_b);
+        return;
+    }
+
+    // Run agent A (writes to channel)
+    serial_println!("  Running {} → channel:{}...", agent_a, chan_id);
+    match crate::wasm_runtime::execute_agent(
+        agent_a, wasm_a.unwrap(), None, Some(chan_id), None,
+    ) {
+        Ok(()) => serial_println!("  {} completed ✓", agent_a),
+        Err(e) => {
+            serial_println!("  {} failed: {}", agent_a, e);
+            return;
+        }
+    }
+
+    // Check channel
+    {
+        let channels = CHANNELS.lock();
+        if let Some(ch) = channels.get(chan_id) {
+            serial_println!("  Channel:{} → {} messages queued", chan_id, ch.message_count());
+        }
+    }
+
+    // Run agent B (reads from channel)
+    serial_println!("  Running {} ← channel:{}...", agent_b, chan_id);
+    match crate::wasm_runtime::execute_agent(
+        agent_b, wasm_b.unwrap(), None, None, Some(chan_id),
+    ) {
+        Ok(()) => serial_println!("  {} completed ✓", agent_b),
+        Err(e) => serial_println!("  {} failed: {}", agent_b, e),
+    }
+
+    serial_println!("  ─── Pipeline complete ───");
+}
+
+fn cmd_about() {
+    serial_println!("  ╔═══════════════════════════════════╗");
+    serial_println!("  ║  TuniCore v0.5.0                  ║");
+    serial_println!("  ║  Confidential Agent Runtime       ║");
+    serial_println!("  ╠═══════════════════════════════════╣");
+    serial_println!("  ║  Architecture: x86_64             ║");
+    serial_println!("  ║  APIC: x2APIC (MSR-based)        ║");
+    serial_println!("  ║  WASM: wasmi 1.0.9 (pure Rust)   ║");
+    serial_println!("  ║  Security: capability-based       ║");
+    serial_println!("  ║  Audit: FNV-1a hash chain         ║");
+    serial_println!("  ╠═══════════════════════════════════╣");
+    serial_println!("  ║  The agent is the interface.      ║");
+    serial_println!("  ║  The kernel is the guard.         ║");
+    serial_println!("  ╚═══════════════════════════════════╝");
 }
 
 /// Ensure channel 0 exists
