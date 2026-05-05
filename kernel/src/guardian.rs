@@ -216,21 +216,73 @@ pub fn run() -> ! {
     serial_println!("=======================================");
     serial_println!();
 
+    // Initialize chat UI on framebuffer if available
+    if let Some(fb) = crate::get_framebuffer() {
+        crate::chat_ui::ChatUI::init(fb);
+        if let Some(ref mut ui) = *crate::chat_ui::CHAT.lock() {
+            ui.system_msg("Welcome to TuniCore!");
+            ui.system_msg("Just type what you need. No commands to memorize.");
+            ui.system_msg("Try: show my files, deploy greeter, or ask anything.");
+        }
+        crate::keyboard::init();
+    }
+
     interactive_loop();
 }
 
-/// Interactive command loop - reads from serial, executes intents
+/// Interactive command loop - reads from serial AND keyboard
 fn interactive_loop() -> ! {
     let mut line_buf = [0u8; 256];
     let mut line_pos: usize = 0;
 
-    // Print initial prompt
+    // Print initial prompt on serial
     print_prompt();
 
     loop {
-        // Poll serial for input
-        let byte = crate::serial::SERIAL.lock().read_byte();
+        // Check keyboard first (for framebuffer/chat mode)
+        if let Some(key) = crate::keyboard::read_key() {
+            // Forward to chat UI
+            if let Some(ref mut ui) = *crate::chat_ui::CHAT.lock() {
+                if let Some(cmd) = ui.key_input(key) {
+                    // Execute the command
+                    crate::intent::execute(&cmd);
+                    // Show response in chat
+                    // (intent already writes to serial, we mirror here)
+                }
+            }
+            // Also echo to serial
+            match key {
+                b'\n' => {
+                    serial_println!();
+                    if line_pos > 0 {
+                        if let Ok(cmd) = core::str::from_utf8(&line_buf[..line_pos]) {
+                            crate::intent::execute(cmd);
+                        }
+                        line_pos = 0;
+                    }
+                    print_prompt();
+                }
+                8 | 0x7F => {
+                    if line_pos > 0 {
+                        line_pos -= 1;
+                        let mut s = crate::serial::SERIAL.lock();
+                        s.write_byte(0x08); s.write_byte(b' '); s.write_byte(0x08);
+                    }
+                }
+                0x20..=0x7E => {
+                    if line_pos < 255 {
+                        line_buf[line_pos] = key;
+                        line_pos += 1;
+                        crate::serial::SERIAL.lock().write_byte(key);
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
 
+        // Check serial input
+        let byte = crate::serial::SERIAL.lock().read_byte();
         if let Some(b) = byte {
             match b {
                 // Enter - execute command
@@ -238,6 +290,10 @@ fn interactive_loop() -> ! {
                     serial_println!();
                     if line_pos > 0 {
                         if let Ok(cmd) = core::str::from_utf8(&line_buf[..line_pos]) {
+                            // Show in chat UI too
+                            if let Some(ref mut ui) = *crate::chat_ui::CHAT.lock() {
+                                ui.user_msg(cmd);
+                            }
                             crate::intent::execute(cmd);
                         }
                         line_pos = 0;
@@ -248,7 +304,6 @@ fn interactive_loop() -> ! {
                 0x7F | 0x08 => {
                     if line_pos > 0 {
                         line_pos -= 1;
-                        // Erase character visually
                         let mut s = crate::serial::SERIAL.lock();
                         s.write_byte(0x08); s.write_byte(b' '); s.write_byte(0x08);
                     }
@@ -258,11 +313,10 @@ fn interactive_loop() -> ! {
                     if line_pos < 255 {
                         line_buf[line_pos] = b;
                         line_pos += 1;
-                        // Echo character
                         crate::serial::SERIAL.lock().write_byte(b);
                     }
                 }
-                _ => {} // Ignore other chars
+                _ => {}
             }
         } else {
             // No input - yield CPU

@@ -35,6 +35,8 @@ mod llm;
 mod intent;
 mod guardian;
 mod wasm_runtime;
+mod keyboard;
+mod chat_ui;
 
 use core::panic::PanicInfo;
 use limine::request::{FramebufferRequest, HhdmRequest, MemmapRequest};
@@ -168,11 +170,23 @@ extern "C" fn kmain() -> ! {
                 fb.width, fb.height, fb.bpp
             );
             framebuffer::draw_boot_header(fb);
+            // Store for chat UI
+            unsafe { FRAMEBUFFER_REF = Some(fb as *const _ as usize); }
         }
     }
 
     // Phase 3+6: Launch guardian agent (enters interactive intent loop, never returns)
     guardian::run();
+}
+
+/// Stored framebuffer pointer (set during boot)
+static mut FRAMEBUFFER_REF: Option<usize> = None;
+
+/// Get the framebuffer reference (for chat UI init)
+pub fn get_framebuffer() -> Option<&'static limine::framebuffer::Framebuffer> {
+    unsafe {
+        FRAMEBUFFER_REF.map(|ptr| &*(ptr as *const limine::framebuffer::Framebuffer))
+    }
 }
 
 #[panic_handler]

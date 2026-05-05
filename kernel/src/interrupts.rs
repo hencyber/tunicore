@@ -69,11 +69,26 @@ unsafe fn apic_write_mmio(base: u64, offset: u32, value: u32) {
     unsafe { core::ptr::write_volatile(addr as *mut u32, value) }
 }
 
-/// Disable the legacy 8259 PIC completely
-fn disable_legacy_pic() {
+/// Initialize PIC with keyboard IRQ1 enabled
+/// Remaps PIC to vectors 32-47 so IRQ1 -> vector 33
+fn init_pic_for_keyboard() {
     unsafe {
-        Port::<u8>::new(0xA1).write(0xFF);
-        Port::<u8>::new(0x21).write(0xFF);
+        // ICW1: begin init
+        Port::<u8>::new(0x20).write(0x11);
+        Port::<u8>::new(0xA0).write(0x11);
+        // ICW2: remap to 32/40
+        Port::<u8>::new(0x21).write(32);
+        Port::<u8>::new(0xA1).write(40);
+        // ICW3: cascade
+        Port::<u8>::new(0x21).write(4);
+        Port::<u8>::new(0xA1).write(2);
+        // ICW4: 8086 mode
+        Port::<u8>::new(0x21).write(0x01);
+        Port::<u8>::new(0xA1).write(0x01);
+        // Mask all except IRQ1 (keyboard) on master
+        // Bit 0 = IRQ0 (timer - handled by APIC), Bit 1 = IRQ1 (keyboard)
+        Port::<u8>::new(0x21).write(0xFD); // 11111101 - only IRQ1 enabled
+        Port::<u8>::new(0xA1).write(0xFF); // all slave masked
     }
 }
 
@@ -110,7 +125,7 @@ static mut APIC_MODE: ApicMode = ApicMode::X2Apic;
 
 /// Initialize the Local APIC
 pub fn init(hhdm_offset: u64) {
-    disable_legacy_pic();
+    init_pic_for_keyboard();
 
     // Try x2APIC first (MSR-based, no MMIO needed)
     let x2apic_ok = enable_x2apic();

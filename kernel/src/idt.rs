@@ -26,8 +26,9 @@ static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     idt.general_protection_fault
         .set_handler_fn(general_protection_handler);
 
-    // APIC interrupts (vector 32 = timer, 255 = spurious)
+    // APIC interrupts (vector 32 = timer, 33 = keyboard, 255 = spurious)
     idt[32].set_handler_fn(crate::interrupts::timer_handler);
+    idt[33].set_handler_fn(crate::keyboard::keyboard_handler);
     idt[0xFF_u8].set_handler_fn(crate::interrupts::spurious_handler);
 
     idt
