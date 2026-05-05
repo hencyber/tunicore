@@ -10,7 +10,7 @@ tc> show configuration
   hostname = tunicore
   version  = 0.6.0
   owner    = tuncore
-  lang     = sv-SE
+  lang     = en
 
 tc> deploy greeter
   [agent:5] env_get('hostname') = tunicore
@@ -98,7 +98,7 @@ Every hobby OS copies Unix. TuniCore doesn't.
   Arch      x86_64
   Uptime    ~0m 5s
   Shell     intent/v2
-  Lang      sv-SE
+  Lang      en
   RAM       401/402 MiB free
   Agents    6 built-in
   Commands  37 exact + NLP fuzzy

@@ -92,7 +92,7 @@ const steps = [
   { text: '<span class="dim">====== TuniCore v0.6.0 ======</span>\n<span class="dim">Booting on x86_64...</span>\n<span class="ok">  Serial  GDT  IDT  Heap  PMM</span>\n<span class="ok">  WASM runtime ready</span>\n<span class="ok">  Environment initialized</span>\n', delay: 1200 },
 
   { prompt: true, cmd: 'show configuration', delay: 80 },
-  { text: '  <span class="dim">Environment (7 vars):</span>\n  <span class="dim">KEY              VALUE</span>\n  <span class="dim">---              -----</span>\n  hostname         <span class="info">tunicore</span>\n  version          <span class="info">0.6.0</span>\n  owner            <span class="info">tuncore</span>\n  arch             <span class="info">x86_64</span>\n  lang             <span class="info">sv-SE</span>\n  shell            <span class="info">intent/v2</span>\n', delay: 1500 },
+  { text: '  <span class="dim">Environment (7 vars):</span>\n  <span class="dim">KEY              VALUE</span>\n  <span class="dim">---              -----</span>\n  hostname         <span class="info">tunicore</span>\n  version          <span class="info">0.6.0</span>\n  owner            <span class="info">tuncore</span>\n  arch             <span class="info">x86_64</span>\n  lang             <span class="info">en</span>\n  shell            <span class="info">intent/v2</span>\n', delay: 1500 },
 
   { prompt: true, cmd: 'set owner tuncore', delay: 70 },
   { text: '  owner = <span class="ok">tuncore</span>\n', delay: 800 },
@@ -118,7 +118,7 @@ const steps = [
 
   { clear: true, delay: 300 },
   { prompt: true, cmd: 'sysinfo', delay: 90 },
-  { text: '\n  OS        TuniCore <span class="info">v0.6.0</span>\n  Host      <span class="info">tunicore</span>\n  Owner     <span class="info">tuncore</span>\n  Arch      x86_64\n  Uptime    ~0m 14s\n  Shell     intent/v2\n  Lang      sv-SE\n\n  RAM       <span class="ok">401/402 MiB free</span>\n  Files     3 (239 B)\n  Procs     1 active, 9 total\n  Agents    6 built-in\n  Commands  <span class="info">37 exact + NLP fuzzy + AI</span>\n', delay: 3500 },
+  { text: '\n  OS        TuniCore <span class="info">v0.6.0</span>\n  Host      <span class="info">tunicore</span>\n  Owner     <span class="info">tuncore</span>\n  Arch      x86_64\n  Uptime    ~0m 14s\n  Shell     intent/v2\n  Lang      en\n\n  RAM       <span class="ok">401/402 MiB free</span>\n  Files     3 (239 B)\n  Procs     1 active, 9 total\n  Agents    6 built-in\n  Commands  <span class="info">37 exact + NLP fuzzy + AI</span>\n', delay: 3500 },
 
   { prompt: true, cmd: 'ask what is Rust?', delay: 80 },
   { text: '  <span class="dim">Thinking...</span>\n  <span class="accent">Rust is a systems programming language designed for\n  safety and performance, created by Mozilla. It\n  guarantees memory safety without a garbage collector.</span>\n', delay: 3000 },

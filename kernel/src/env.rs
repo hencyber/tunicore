@@ -90,7 +90,7 @@ pub fn init_defaults() {
     env.set("hostname", "tunicore").ok();
     env.set("version", "0.6.0").ok();
     env.set("arch", "x86_64").ok();
-    env.set("lang", "sv-SE").ok();
+    env.set("lang", "en").ok();
     env.set("shell", "intent/v2").ok();
     env.set("heap_mb", "32").ok();
 }
