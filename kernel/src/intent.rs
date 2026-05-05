@@ -944,7 +944,7 @@ fn cmd_sysinfo() {
     serial_println!("  Aliases   {}", alias_count);
     serial_println!("  History   {} entries", hist_count);
     serial_println!("  Agents    6 built-in (hello, writer, analyzer, greeter, sender, receiver)");
-    serial_println!("  Commands  36 exact + NLP fuzzy");
+    serial_println!("  Commands  37 exact + NLP fuzzy + AI fallback");
     serial_println!();
 }
 

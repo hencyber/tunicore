@@ -88,7 +88,7 @@ pub static ENV: Mutex<EnvStore> = Mutex::new(EnvStore::new());
 pub fn init_defaults() {
     let mut env = ENV.lock();
     env.set("hostname", "tunicore").ok();
-    env.set("version", "0.5.0").ok();
+    env.set("version", "0.6.0").ok();
     env.set("arch", "x86_64").ok();
     env.set("lang", "sv-SE").ok();
     env.set("shell", "intent/v2").ok();
