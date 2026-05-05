@@ -15,7 +15,7 @@ use crate::syscall::{self, SyscallResult};
 use crate::{serial_println, interrupts};
 
 /// Spawn and run the guardian agent
-pub fn run() {
+pub fn run() -> ! {
     serial_println!();
     serial_println!("[guardian] Initializing kernel agent...");
 
@@ -39,7 +39,7 @@ pub fn run() {
             }
             Err(e) => {
                 serial_println!("[guardian] FATAL: failed to spawn: {}", e);
-                return;
+                loop { x86_64::instructions::hlt(); }
             }
         }
     };
@@ -207,6 +207,68 @@ pub fn run() {
     serial_println!();
     syscall::system_status(agent_id);
     serial_println!("[guardian] All tests passed. Multi-agent system operational.");
+
+    // 9. Enter interactive intent mode — "talk to your OS"
+    serial_println!();
+    serial_println!("═══════════════════════════════════════");
+    serial_println!("  TuniCore v0.4.0 — Intent Layer");
+    serial_println!("  Type 'help' for commands.");
+    serial_println!("═══════════════════════════════════════");
+    serial_println!();
+
+    interactive_loop();
+}
+
+/// Interactive command loop — reads from serial, executes intents
+fn interactive_loop() -> ! {
+    let mut line_buf = [0u8; 256];
+    let mut line_pos: usize = 0;
+
+    // Print initial prompt
+    print_prompt();
+
+    loop {
+        // Poll serial for input
+        let byte = crate::serial::SERIAL.lock().read_byte();
+
+        if let Some(b) = byte {
+            match b {
+                // Enter — execute command
+                b'\r' | b'\n' => {
+                    serial_println!();
+                    if line_pos > 0 {
+                        if let Ok(cmd) = core::str::from_utf8(&line_buf[..line_pos]) {
+                            crate::intent::execute(cmd);
+                        }
+                        line_pos = 0;
+                    }
+                    print_prompt();
+                }
+                // Backspace
+                0x7F | 0x08 => {
+                    if line_pos > 0 {
+                        line_pos -= 1;
+                        // Erase character visually
+                        let mut s = crate::serial::SERIAL.lock();
+                        s.write_byte(0x08); s.write_byte(b' '); s.write_byte(0x08);
+                    }
+                }
+                // Printable ASCII
+                0x20..=0x7E => {
+                    if line_pos < 255 {
+                        line_buf[line_pos] = b;
+                        line_pos += 1;
+                        // Echo character
+                        crate::serial::SERIAL.lock().write_byte(b);
+                    }
+                }
+                _ => {} // Ignore other chars
+            }
+        } else {
+            // No input — yield CPU
+            x86_64::instructions::hlt();
+        }
+    }
 }
 
 fn log_grant(name: &str, result: &SyscallResult) {
@@ -225,5 +287,12 @@ fn result_status(result: &SyscallResult) -> &'static str {
     match result {
         SyscallResult::Ok | SyscallResult::Value(_) | SyscallResult::Handle(_) => "OK ✓",
         SyscallResult::Err(_) => "DENIED ✗",
+    }
+}
+
+fn print_prompt() {
+    let mut s = crate::serial::SERIAL.lock();
+    for &b in b"tc> " {
+        s.write_byte(b);
     }
 }

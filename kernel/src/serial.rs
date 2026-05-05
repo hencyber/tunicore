@@ -78,6 +78,20 @@ impl SerialPort {
         unsafe { self.line_status.read() & 0x20 != 0 }
     }
 
+    /// Check if data is available to read
+    pub fn data_ready(&mut self) -> bool {
+        unsafe { self.line_status.read() & 0x01 != 0 }
+    }
+
+    /// Read a single byte (non-blocking, returns None if no data)
+    pub fn read_byte(&mut self) -> Option<u8> {
+        if self.data_ready() {
+            Some(unsafe { self.data.read() })
+        } else {
+            None
+        }
+    }
+
     /// Write a single byte to the serial port
     pub fn write_byte(&mut self, byte: u8) {
         // Wait for transmit buffer to be empty
