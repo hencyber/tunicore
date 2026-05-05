@@ -15,6 +15,7 @@ use crate::agent::AGENT_TABLE;
 use crate::audit::AUDIT_LOG;
 use crate::cap_table::CAP_TABLE;
 use crate::channel::CHANNELS;
+use crate::alias::ALIASES;
 use crate::env::ENV;
 use crate::virtfs::FS;
 use crate::interrupts;
@@ -31,6 +32,22 @@ pub fn execute(input: &str) {
     let mut parts = trimmed.splitn(2, ' ');
     let cmd = parts.next().unwrap_or("");
     let args = parts.next().unwrap_or("").trim();
+    // Check alias FIRST — resolve and re-execute
+    {
+        let aliases = ALIASES.lock();
+        if let Some(expansion) = aliases.resolve(cmd) {
+            let full = if args.is_empty() {
+                alloc::string::String::from(expansion)
+            } else {
+                alloc::format!("{} {}", expansion, args)
+            };
+            drop(aliases);
+            serial_println!("  → {}", full);
+            execute(&full);
+            return;
+        }
+    }
+
     // Try exact command match first
     let handled = match cmd {
         "help" | "?" => { cmd_help(); true },
@@ -59,6 +76,9 @@ pub fn execute(input: &str) {
         "unset" => { cmd_unset(args); true },
         "env" | "e" => { cmd_env(); true },
         "run" | "r" => { cmd_run(args); true },
+        "alias" => { cmd_alias(args); true },
+        "unalias" => { cmd_unalias(args); true },
+        "aliases" => { cmd_aliases(); true },
         "clear" => { cmd_clear(); true },
         "about" => { cmd_about(); true },
         _ => false,
@@ -218,6 +238,9 @@ fn cmd_help() {
     serial_println!("  unset <key>     Remove environment var");
     serial_println!("  env  (e)        List all env vars");
     serial_println!("  run  (r) <a..>  Run agent workflow");
+    serial_println!("  alias <n> <cmd> Define command alias");
+    serial_println!("  unalias <name>  Remove alias");
+    serial_println!("  aliases         List all aliases");
     serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
@@ -644,6 +667,47 @@ fn cmd_run(args: &str) {
     }
 
     serial_println!("  ─── Workflow complete: {} ok, {} failed ───", ok, fail);
+}
+
+fn cmd_alias(args: &str) {
+    let mut parts = args.splitn(2, ' ');
+    let name = parts.next().unwrap_or("");
+    let expansion = parts.next().unwrap_or("");
+    if name.is_empty() || expansion.is_empty() {
+        serial_println!("  Usage: alias <name> <command>");
+        serial_println!("  Example: alias report run writer analyzer");
+        return;
+    }
+    match ALIASES.lock().define(name, expansion) {
+        Ok(()) => serial_println!("  Alias '{}' → '{}'", name, expansion),
+        Err(e) => serial_println!("  Error: {}", e),
+    }
+}
+
+fn cmd_unalias(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: unalias <name>");
+        return;
+    }
+    if ALIASES.lock().remove(args) {
+        serial_println!("  Removed alias '{}'", args);
+    } else {
+        serial_println!("  Alias '{}' not found", args);
+    }
+}
+
+fn cmd_aliases() {
+    let table = ALIASES.lock();
+    if table.len() == 0 {
+        serial_println!("  No aliases defined. Use: alias <name> <command>");
+        return;
+    }
+    serial_println!("  Aliases ({}):", table.len());
+    serial_println!("  {:12} {}", "NAME", "EXPANDS TO");
+    serial_println!("  {:12} {}", "────", "──────────");
+    for (name, expansion) in table.iter() {
+        serial_println!("  {:12} {}", name, expansion);
+    }
 }
 
 fn cmd_clear() {
