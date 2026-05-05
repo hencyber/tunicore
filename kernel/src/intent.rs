@@ -125,6 +125,7 @@ pub fn execute(input: &str) {
     // Try exact command match first
     let handled = match cmd {
         "help" | "?" => { cmd_help(); true },
+        "sysinfo" => { cmd_sysinfo(); true },
         "status" | "s" => { cmd_status(); true },
         "ps" => { cmd_ps(); true },
         "agents" | "a" => { cmd_agents(); true },
@@ -372,6 +373,7 @@ fn cmd_help() {
     serial_println!("  aliases         List all aliases");
     serial_println!("  history (h) [n] Command history");
     serial_println!("  !!              Repeat last command");
+    serial_println!("  sysinfo         System identity card");
     serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
@@ -860,6 +862,79 @@ fn cmd_history(args: &str) {
     for (num, cmd) in entries {
         serial_println!("  {:4}  {}", num, cmd);
     }
+}
+
+fn cmd_sysinfo() {
+    let tick = interrupts::ticks();
+    let secs = tick / 100;
+
+    // ASCII art logo
+    serial_println!();
+    serial_println!("  ████████╗ ██████╗");
+    serial_println!("  ╚══██╔══╝██╔════╝");
+    serial_println!("     ██║   ██║");
+    serial_println!("     ██║   ██║");
+    serial_println!("     ██║   ╚██████╗");
+    serial_println!("     ╚═╝    ╚═════╝");
+    serial_println!();
+
+    // System identity — copy values before dropping lock
+    let (hostname, version, owner, lang, shell, env_count) = {
+        let env = ENV.lock();
+        let h = alloc::string::String::from(env.get("hostname").unwrap_or("unknown"));
+        let v = alloc::string::String::from(env.get("version").unwrap_or("?"));
+        let o = alloc::string::String::from(env.get("owner").unwrap_or("-"));
+        let l = alloc::string::String::from(env.get("lang").unwrap_or("en"));
+        let s = alloc::string::String::from(env.get("shell").unwrap_or("?"));
+        let c = env.len();
+        (h, v, o, l, s, c)
+    };
+
+    serial_println!("  OS        TuniCore v{}", version);
+    serial_println!("  Host      {}", hostname);
+    serial_println!("  Owner     {}", owner);
+    serial_println!("  Arch      x86_64");
+    serial_println!("  Uptime    ~{}m {}s ({} ticks)", secs / 60, secs % 60, tick);
+    serial_println!("  Shell     {}", shell);
+    serial_println!("  Lang      {}", lang);
+    serial_println!();
+
+    // Hardware
+    let stats = crate::memory::page_alloc::stats();
+    serial_println!("  RAM       {}/{} MiB free", stats.free_mb(), stats.total_mb());
+    serial_println!("  Heap      32 MiB static");
+
+    // Filesystem
+    let fs = FS.lock();
+    let files = fs.file_count();
+    let bytes = fs.total_size();
+    drop(fs);
+    serial_println!("  Files     {} ({} B)", files, bytes);
+
+    // Processes
+    let table = AGENT_TABLE.lock();
+    let active = table.active_count();
+    let total_spawned = table.total_spawned();
+    drop(table);
+    serial_println!("  Procs     {} active, {} total spawned", active, total_spawned);
+
+    // Capabilities
+    let caps = CAP_TABLE.lock().active_count();
+    serial_println!("  Caps      {}/4096 active", caps);
+
+    // Audit
+    let audit = AUDIT_LOG.lock().total_events();
+    serial_println!("  Audit     {} events", audit);
+
+    // Environment & aliases
+    let alias_count = ALIASES.lock().len();
+    let hist_count = HISTORY.lock().count;
+    serial_println!("  Env       {} vars", env_count);
+    serial_println!("  Aliases   {}", alias_count);
+    serial_println!("  History   {} entries", hist_count);
+    serial_println!("  Agents    6 built-in (hello, writer, analyzer, greeter, sender, receiver)");
+    serial_println!("  Commands  36 exact + NLP fuzzy");
+    serial_println!();
 }
 
 fn cmd_clear() {
