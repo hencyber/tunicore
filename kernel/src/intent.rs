@@ -21,11 +21,85 @@ use crate::virtfs::FS;
 use crate::interrupts;
 use crate::serial_println;
 
+/// Command history ring buffer
+const HISTORY_SIZE: usize = 32;
+static HISTORY: spin::Mutex<History> = spin::Mutex::new(History::new());
+
+struct History {
+    entries: [[u8; 128]; HISTORY_SIZE],
+    lens: [usize; HISTORY_SIZE],
+    head: usize,
+    count: usize,
+}
+
+impl History {
+    const fn new() -> Self {
+        Self {
+            entries: [[0u8; 128]; HISTORY_SIZE],
+            lens: [0; HISTORY_SIZE],
+            head: 0,
+            count: 0,
+        }
+    }
+
+    fn push(&mut self, cmd: &str) {
+        let n = cmd.len().min(127);
+        self.entries[self.head][..n].copy_from_slice(&cmd.as_bytes()[..n]);
+        self.lens[self.head] = n;
+        self.head = (self.head + 1) % HISTORY_SIZE;
+        if self.count < HISTORY_SIZE { self.count += 1; }
+    }
+
+    fn last(&self) -> Option<&str> {
+        if self.count == 0 { return None; }
+        let idx = if self.head == 0 { HISTORY_SIZE - 1 } else { self.head - 1 };
+        let n = self.lens[idx];
+        core::str::from_utf8(&self.entries[idx][..n]).ok()
+    }
+
+    fn iter_recent(&self, max: usize) -> alloc::vec::Vec<(usize, &str)> {
+        let mut result = alloc::vec::Vec::new();
+        let show = max.min(self.count);
+        for i in 0..show {
+            let idx = if self.head >= show - i {
+                self.head - show + i
+            } else {
+                HISTORY_SIZE - (show - i - self.head)
+            };
+            let n = self.lens[idx];
+            if let Ok(s) = core::str::from_utf8(&self.entries[idx][..n]) {
+                result.push((self.count - show + i + 1, s));
+            }
+        }
+        result
+    }
+}
+
 /// Parse and execute an intent command
 pub fn execute(input: &str) {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return;
+    }
+
+    // !! = repeat last command
+    if trimmed == "!!" {
+        let hist = HISTORY.lock();
+        if let Some(last) = hist.last() {
+            let cmd = alloc::string::String::from(last);
+            drop(hist);
+            serial_println!("  → {}", cmd);
+            execute(&cmd);
+            return;
+        } else {
+            serial_println!("  No previous command");
+            return;
+        }
+    }
+
+    // Record in history (skip !! and history itself)
+    if trimmed != "history" && !trimmed.starts_with("history ") {
+        HISTORY.lock().push(trimmed);
     }
 
     // Split into command + args
@@ -79,6 +153,7 @@ pub fn execute(input: &str) {
         "alias" => { cmd_alias(args); true },
         "unalias" => { cmd_unalias(args); true },
         "aliases" => { cmd_aliases(); true },
+        "history" | "h" => { cmd_history(args); true },
         "clear" => { cmd_clear(); true },
         "about" => { cmd_about(); true },
         _ => false,
@@ -241,6 +316,8 @@ fn cmd_help() {
     serial_println!("  alias <n> <cmd> Define command alias");
     serial_println!("  unalias <name>  Remove alias");
     serial_println!("  aliases         List all aliases");
+    serial_println!("  history (h) [n] Command history");
+    serial_println!("  !!              Repeat last command");
     serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
@@ -714,6 +791,20 @@ fn cmd_aliases() {
     serial_println!("  {:12} {}", "────", "──────────");
     for (name, expansion) in table.iter() {
         serial_println!("  {:12} {}", name, expansion);
+    }
+}
+
+fn cmd_history(args: &str) {
+    let n: usize = args.parse().unwrap_or(10);
+    let hist = HISTORY.lock();
+    let entries = hist.iter_recent(n);
+    if entries.is_empty() {
+        serial_println!("  No command history yet.");
+        return;
+    }
+    serial_println!("  History (last {}):", entries.len());
+    for (num, cmd) in entries {
+        serial_println!("  {:4}  {}", num, cmd);
     }
 }
 
