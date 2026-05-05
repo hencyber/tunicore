@@ -34,6 +34,7 @@ pub fn execute(input: &str) {
     match cmd {
         "help" | "?" => cmd_help(),
         "status" | "s" => cmd_status(),
+        "ps" => cmd_ps(),
         "agents" | "a" => cmd_agents(),
         "caps" | "c" => cmd_caps(),
         "audit" => cmd_audit(args),
@@ -47,6 +48,7 @@ pub fn execute(input: &str) {
         "rm" => cmd_rm(args),
         "touch" => cmd_touch(args),
         "mem" | "m" => cmd_mem(),
+        "kill" => cmd_kill(args),
         "about" => cmd_about(),
         _ => {
             serial_println!("  Unknown command: '{}'. Type 'help' for commands.", cmd);
@@ -58,7 +60,8 @@ fn cmd_help() {
     serial_println!("  TuniCore Intent Commands:");
     serial_println!("  ─────────────────────────");
     serial_println!("  status (s)      System overview");
-    serial_println!("  agents (a)      List active agents");
+    serial_println!("  ps              Process table");
+    serial_println!("  agents (a)      Active agent count");
     serial_println!("  caps   (c)      List capabilities");
     serial_println!("  audit [n]       Show last n audit events");
     serial_println!("  deploy <name>   Deploy WASM agent");
@@ -71,6 +74,7 @@ fn cmd_help() {
     serial_println!("  rm <file>       Delete file");
     serial_println!("  tick            APIC tick counter");
     serial_println!("  mem  (m)        Physical memory stats");
+    serial_println!("  kill <pid>      Terminate agent");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
 }
@@ -99,15 +103,57 @@ fn cmd_status() {
 
 fn cmd_agents() {
     let table = AGENT_TABLE.lock();
-    let count = table.active_count();
-    if count == 0 {
-        serial_println!("  No active agents.");
+    let active = table.active_count();
+    let total = table.total_spawned();
+    serial_println!("  Active: {}  Total spawned: {}", active, total);
+}
+
+fn cmd_ps() {
+    use crate::agent::AgentState;
+
+    let table = AGENT_TABLE.lock();
+    let tick = interrupts::ticks();
+
+    serial_println!("  {:>5} {:>7} {:16} {:>5} {:>8}", "PID", "STATE", "NAME", "CAPS", "AGE");
+    serial_println!("  {:>5} {:>7} {:16} {:>5} {:>8}", "───", "─────", "────", "────", "───");
+
+    let mut count = 0;
+    for agent in table.iter() {
+        let state = match agent.state {
+            AgentState::Initializing => "INIT",
+            AgentState::Active => "RUN",
+            AgentState::Blocked => "BLOCK",
+            AgentState::Suspended => "SUSP",
+            AgentState::Terminated => "DEAD",
+        };
+        let age = tick.saturating_sub(agent.spawn_tick);
+        serial_println!("  {:>5} {:>7} {:16} {:>5} {:>8}",
+            agent.id.0, state, agent.name_str(),
+            agent.capabilities.len(), age);
+        count += 1;
+    }
+    serial_println!("  {} processes", count);
+}
+
+fn cmd_kill(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: kill <pid>");
         return;
     }
-    serial_println!("  Active agents: {}", count);
-    // Note: we'd need to expose iteration on AgentTable
-    // For now, just show the count
-    serial_println!("  (Detailed listing requires agent table iteration — coming soon)");
+    let pid: u32 = match args.parse() {
+        Ok(v) => v,
+        Err(_) => {
+            serial_println!("  Invalid PID: '{}'", args);
+            return;
+        }
+    };
+
+    let mut table = AGENT_TABLE.lock();
+    let id = crate::cap_table::AgentId(pid);
+    match table.kill(id) {
+        Ok(()) => serial_println!("  Killed agent:{}", pid),
+        Err(e) => serial_println!("  Kill failed: {}", e),
+    }
 }
 
 fn cmd_caps() {

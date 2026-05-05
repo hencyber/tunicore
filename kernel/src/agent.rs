@@ -179,12 +179,14 @@ impl Agent {
 /// Agent table — manages all active agents
 pub struct AgentTable {
     agents: Vec<Agent>,
+    total_spawned: u32,
 }
 
 impl AgentTable {
     pub const fn new() -> Self {
         Self {
             agents: Vec::new(),
+            total_spawned: 0,
         }
     }
 
@@ -204,6 +206,7 @@ impl AgentTable {
         let agent = Agent::new(name, parent, budget, max_lifetime, current_tick);
         let id = agent.id;
         self.agents.push(agent);
+        self.total_spawned += 1;
         Ok(id)
     }
 
@@ -234,6 +237,16 @@ impl AgentTable {
             .iter()
             .filter(|a| a.state != AgentState::Terminated)
             .count()
+    }
+
+    /// Total agents ever spawned
+    pub fn total_spawned(&self) -> u32 {
+        self.total_spawned
+    }
+
+    /// Iterate over all agents (for ps command)
+    pub fn iter(&self) -> impl Iterator<Item = &Agent> {
+        self.agents.iter()
     }
 
     /// Garbage collect: remove terminated agents
