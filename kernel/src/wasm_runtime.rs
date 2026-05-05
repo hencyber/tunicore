@@ -1,10 +1,11 @@
-//! WASM Agent Runtime — Phase 5
+//! WASM Agent Runtime — Phase 8
 //!
 //! Sandboxed WASM execution with rich host functions:
-//! - tc.log(ptr, len)          — write to serial
-//! - tc.time() -> i64          — get kernel tick
-//! - tc.chan_send(id, ptr, len) -> i32  — send to channel
-//! - tc.chan_recv(id, ptr, len) -> i32  — receive from channel
+//! - tc.log(ptr, len)                          — write to serial
+//! - tc.time() -> i64                          — get kernel tick
+//! - tc.chan_send(id, ptr, len) -> i32          — send to channel
+//! - tc.chan_recv(id, ptr, len) -> i32          — receive from channel
+//! - tc.fs_write(p_ptr, p_len, d_ptr, d_len)   — write file to VirtFS
 
 use wasmi::{Caller, Engine, Extern, Func, Linker, Module, Store, TypedFunc};
 
@@ -13,6 +14,7 @@ use crate::audit::{AuditEvent, AUDIT_LOG};
 use crate::cap_table::{AgentId, CapHandle, CAP_TABLE};
 use crate::capability::types::Rights;
 use crate::channel::{self, Message, CHANNELS};
+use crate::virtfs::FS;
 use crate::interrupts;
 use crate::resource::ResourceRef;
 use crate::serial_println;
@@ -21,8 +23,9 @@ use crate::serial_println;
 struct HostState {
     agent_id: AgentId,
     serial_cap: Option<CapHandle>,
-    channel_write_cap: Option<(CapHandle, u64)>, // (cap, channel_id)
+    channel_write_cap: Option<(CapHandle, u64)>,
     channel_read_cap: Option<(CapHandle, u64)>,
+    fs_write_cap: Option<CapHandle>,
 }
 
 /// Execute a WASM agent with optional channel capabilities
@@ -75,11 +78,17 @@ pub fn execute_agent(
         None
     };
 
-    // 4. Set up WASM engine
+    // 4. Grant FS write capability
+    let fs_write_cap = {
+        let mut ct = CAP_TABLE.lock();
+        ct.grant(agent_id, ResourceRef::Filesystem, Rights::WRITE, 0, tick).ok()
+    };
+
+    // 5. Set up WASM engine
     let engine = Engine::default();
     let module = Module::new(&engine, wasm_bytes).map_err(|_| "WASM parse error")?;
 
-    let host = HostState { agent_id, serial_cap, channel_write_cap, channel_read_cap };
+    let host = HostState { agent_id, serial_cap, channel_write_cap, channel_read_cap, fs_write_cap };
     let mut store = Store::new(&engine, host);
     let mut linker = <Linker<HostState>>::new(&engine);
 
@@ -171,7 +180,42 @@ pub fn execute_agent(
         }),
     ).map_err(|_| "link tc.chan_recv")?;
 
-    // 5. Instantiate and run
+    // ─── Host function: tc.fs_write ───
+    linker.define("tc", "fs_write",
+        Func::wrap(&mut store, |caller: Caller<'_, HostState>, path_ptr: i32, path_len: i32, data_ptr: i32, data_len: i32| -> i32 {
+            let aid = caller.data().agent_id;
+            let cap = caller.data().fs_write_cap;
+
+            if let Some(cap) = cap {
+                let tick = interrupts::ticks();
+                let ok = CAP_TABLE.lock().check(cap, Rights::WRITE, tick).is_ok();
+                if ok {
+                    if let Some(mem) = caller.get_export("memory").and_then(Extern::into_memory) {
+                        // Read path
+                        let mut path_buf = [0u8; 128];
+                        let pn = (path_len as usize).min(127);
+                        if mem.read(&caller, path_ptr as usize, &mut path_buf[..pn]).is_ok() {
+                            if let Ok(path) = core::str::from_utf8(&path_buf[..pn]) {
+                                // Read data
+                                let mut data_buf = [0u8; 1024];
+                                let dn = (data_len as usize).min(1024);
+                                if mem.read(&caller, data_ptr as usize, &mut data_buf[..dn]).is_ok() {
+                                    let mut fs = FS.lock();
+                                    if fs.write(path, &data_buf[..dn], tick).is_ok() {
+                                        serial_println!("[agent:{}] Wrote {} bytes to '{}'", aid.0, dn, path);
+                                        return dn as i32;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            -1
+        }),
+    ).map_err(|_| "link tc.fs_write")?;
+
+    // 6. Instantiate and run
     let instance = linker.instantiate_and_start(&mut store, &module)
         .map_err(|_| "WASM instantiation error")?;
 

@@ -52,6 +52,9 @@ pub enum ResourceRef {
 
     /// The kernel audit log (read-only for agents)
     AuditLog,
+
+    /// The virtual filesystem
+    Filesystem,
 }
 
 impl ResourceRef {
@@ -65,6 +68,7 @@ impl ResourceRef {
             ResourceRef::Display { .. } => "display",
             ResourceRef::Channel { .. } => "channel",
             ResourceRef::AuditLog => "audit_log",
+            ResourceRef::Filesystem => "filesystem",
         }
     }
 }

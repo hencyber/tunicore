@@ -124,7 +124,7 @@ fn cmd_audit(args: &str) {
 fn cmd_deploy(name: &str) {
     if name.is_empty() {
         serial_println!("  Usage: deploy <agent-name>");
-        serial_println!("  Available: hello, sender, receiver");
+        serial_println!("  Available: hello, sender, receiver, writer");
         return;
     }
 
@@ -134,11 +134,12 @@ fn cmd_deploy(name: &str) {
     static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
     static SENDER_WASM: &[u8] = include_bytes!("sender_agent.wasm");
     static RECEIVER_WASM: &[u8] = include_bytes!("receiver_agent.wasm");
+    static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
 
     let (wasm, chan_w, chan_r) = match name {
         "hello" => (HELLO_WASM, None, None),
+        "writer" => (WRITER_WASM, None, None),
         "sender" => {
-            // Ensure channel 0 exists
             let chan_id = ensure_channel_0();
             (SENDER_WASM, Some(chan_id), None)
         }
@@ -147,7 +148,7 @@ fn cmd_deploy(name: &str) {
             (RECEIVER_WASM, None, Some(chan_id))
         }
         _ => {
-            serial_println!("  Unknown agent '{}'. Available: hello, sender, receiver", name);
+            serial_println!("  Unknown agent '{}'. Available: hello, sender, receiver, writer", name);
             return;
         }
     };
