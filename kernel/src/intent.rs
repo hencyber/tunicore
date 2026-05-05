@@ -58,6 +58,7 @@ pub fn execute(input: &str) {
         "get" => { cmd_get(args); true },
         "unset" => { cmd_unset(args); true },
         "env" | "e" => { cmd_env(); true },
+        "run" | "r" => { cmd_run(args); true },
         "clear" => { cmd_clear(); true },
         "about" => { cmd_about(); true },
         _ => false,
@@ -216,6 +217,7 @@ fn cmd_help() {
     serial_println!("  get <key>       Get environment var");
     serial_println!("  unset <key>     Remove environment var");
     serial_println!("  env  (e)        List all env vars");
+    serial_println!("  run  (r) <a..>  Run agent workflow");
     serial_println!("  clear           Clear screen");
     serial_println!("  about           System info");
     serial_println!("  help (?)        This message");
@@ -591,6 +593,57 @@ fn cmd_env() {
     for (k, v) in env.iter() {
         serial_println!("  {:16} {}", k, v);
     }
+}
+
+fn cmd_run(args: &str) {
+    if args.is_empty() {
+        serial_println!("  Usage: run <agent1> <agent2> ...");
+        serial_println!("  Example: run writer analyzer");
+        return;
+    }
+
+    let agents: alloc::vec::Vec<&str> = args.split_whitespace().collect();
+    let total = agents.len();
+    serial_println!("  ─── Workflow: {} agents ───", total);
+
+    static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
+    static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
+    static ANALYZER_WASM: &[u8] = include_bytes!("analyzer_agent.wasm");
+
+    let mut ok = 0u32;
+    let mut fail = 0u32;
+
+    for (i, name) in agents.iter().enumerate() {
+        serial_println!("  [{}/{}] {}...", i + 1, total, name);
+
+        let wasm: Option<&[u8]> = match *name {
+            "hello" => Some(HELLO_WASM),
+            "writer" => Some(WRITER_WASM),
+            "analyzer" => Some(ANALYZER_WASM),
+            _ => None,
+        };
+
+        match wasm {
+            Some(bytes) => {
+                match crate::wasm_runtime::execute_agent(name, bytes, None, None, None) {
+                    Ok(()) => {
+                        serial_println!("  [{}/{}] {} ✓", i + 1, total, name);
+                        ok += 1;
+                    }
+                    Err(e) => {
+                        serial_println!("  [{}/{}] {} ✗ ({})", i + 1, total, name, e);
+                        fail += 1;
+                    }
+                }
+            }
+            None => {
+                serial_println!("  [{}/{}] {} ✗ (unknown agent)", i + 1, total, name);
+                fail += 1;
+            }
+        }
+    }
+
+    serial_println!("  ─── Workflow complete: {} ok, {} failed ───", ok, fail);
 }
 
 fn cmd_clear() {
