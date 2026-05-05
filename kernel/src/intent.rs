@@ -1,15 +1,15 @@
-//! Intent Layer — the conversational interface
+//! Intent Layer - the conversational interface
 //!
 //! Parses natural-language-like commands into kernel operations.
 //! This is what makes TuniCore unique: you talk to your OS.
 //!
 //! Commands:
-//!   status          — system overview
-//!   agents          — list active agents
-//!   caps            — list capabilities
-//!   audit [n]       — show recent audit events
-//!   deploy <agent>  — deploy a built-in WASM agent
-//!   help            — show available commands
+//!   status          - system overview
+//!   agents          - list active agents
+//!   caps            - list capabilities
+//!   audit [n]       - show recent audit events
+//!   deploy <agent>  - deploy a built-in WASM agent
+//!   help            - show available commands
 
 use crate::agent::AGENT_TABLE;
 use crate::audit::AUDIT_LOG;
@@ -88,7 +88,7 @@ pub fn execute(input: &str) {
         if let Some(last) = hist.last() {
             let cmd = alloc::string::String::from(last);
             drop(hist);
-            serial_println!("  → {}", cmd);
+            serial_println!("  -> {}", cmd);
             execute(&cmd);
             return;
         } else {
@@ -106,7 +106,7 @@ pub fn execute(input: &str) {
     let mut parts = trimmed.splitn(2, ' ');
     let cmd = parts.next().unwrap_or("");
     let args = parts.next().unwrap_or("").trim();
-    // Check alias FIRST — resolve and re-execute
+    // Check alias FIRST - resolve and re-execute
     {
         let aliases = ALIASES.lock();
         if let Some(expansion) = aliases.resolve(cmd) {
@@ -116,7 +116,7 @@ pub fn execute(input: &str) {
                 alloc::format!("{} {}", expansion, args)
             };
             drop(aliases);
-            serial_println!("  → {}", full);
+            serial_println!("  -> {}", full);
             execute(&full);
             return;
         }
@@ -274,19 +274,19 @@ fn fuzzy_intent(input: &str) {
         return;
     }
 
-    // Smart suggestion — find closest command
+    // Smart suggestion - find closest command
     let first = input.split_whitespace().next().unwrap_or("");
     if let Some(suggestion) = suggest_command(first) {
         serial_println!("  Unknown: '{}'. Did you mean '{}'?", first, suggestion);
     } else {
-        // LLM fallback — ask AI if no command matched
-        serial_println!("  \u{1F914} Thinking...");
+        // LLM fallback - ask AI if no command matched
+        serial_println!("  Thinking...");
         match crate::llm::query(input) {
             Ok(response) => {
                 serial_println!("  {}", response);
             }
             Err(_e) => {
-                serial_println!("  '{}' — I don't understand. Try 'help' or 'ask <question>'.", input);
+                serial_println!("  '{}' - I don't understand. Try 'help' or 'ask <question>'.", input);
             }
         }
     }
@@ -352,14 +352,14 @@ fn suggest_command(input: &str) -> Option<&'static str> {
 
 fn cmd_help() {
     serial_println!("  TuniCore Intent Commands:");
-    serial_println!("  ─────────────────────────");
+    serial_println!("  -------------------------");
     serial_println!("  status (s)      System overview");
     serial_println!("  ps              Process table");
     serial_println!("  agents (a)      Active agent count");
     serial_println!("  caps   (c)      List capabilities");
     serial_println!("  audit [n]       Show last n audit events");
     serial_println!("  deploy <name>   Deploy WASM agent");
-    serial_println!("  pipe <a> <b>    Chain: a → channel → b");
+    serial_println!("  pipe <a> <b>    Chain: a -> channel -> b");
     serial_println!("  send <msg>      Send to channel:0");
     serial_println!("  ls              List files");
     serial_println!("  cat <file>      Show file contents");
@@ -400,16 +400,16 @@ fn cmd_status() {
     let fs_size = fs.total_size();
     drop(fs);
 
-    serial_println!("  ┌─────────────────────────────┐");
-    serial_println!("  │ TuniCore v0.5.0             │");
-    serial_println!("  ├─────────────────────────────┤");
-    serial_println!("  │ Tick:    {:<19} │", tick);
-    serial_println!("  │ Agents:  {:<19} │", agents);
-    serial_println!("  │ Caps:    {:<19} │", caps);
-    serial_println!("  │ Audit:   {:<19} │", audit);
-    serial_println!("  │ Files:   {:<19} │", files);
-    serial_println!("  │ FS used: {:<15} B   │", fs_size);
-    serial_println!("  └─────────────────────────────┘");
+    serial_println!("  ┌-----------------------------┐");
+    serial_println!("  | TuniCore v0.6.0             |");
+    serial_println!("  ├-----------------------------┤");
+    serial_println!("  | Tick:    {:<19} |", tick);
+    serial_println!("  | Agents:  {:<19} |", agents);
+    serial_println!("  | Caps:    {:<19} |", caps);
+    serial_println!("  | Audit:   {:<19} |", audit);
+    serial_println!("  | Files:   {:<19} |", files);
+    serial_println!("  | FS used: {:<15} B   |", fs_size);
+    serial_println!("  └-----------------------------┘");
 }
 
 fn cmd_agents() {
@@ -426,7 +426,7 @@ fn cmd_ps() {
     let tick = interrupts::ticks();
 
     serial_println!("  {:>5} {:>7} {:16} {:>5} {:>8}", "PID", "STATE", "NAME", "CAPS", "AGE");
-    serial_println!("  {:>5} {:>7} {:16} {:>5} {:>8}", "───", "─────", "────", "────", "───");
+    serial_println!("  {:>5} {:>7} {:16} {:>5} {:>8}", "---", "-----", "----", "----", "---");
 
     let mut count = 0;
     for agent in table.iter() {
@@ -558,14 +558,14 @@ fn cmd_tick() {
 
 fn cmd_mem() {
     let stats = crate::memory::page_alloc::stats();
-    serial_println!("  ┌─────────────────────────────┐");
-    serial_println!("  │ Physical Memory              │");
-    serial_println!("  ├─────────────────────────────┤");
-    serial_println!("  │ Total:   {:>5} MiB ({:>7}) │", stats.total_mb(), stats.total);
-    serial_println!("  │ Used:    {:>5} MiB ({:>7}) │", stats.used_mb(), stats.used);
-    serial_println!("  │ Free:    {:>5} MiB ({:>7}) │", stats.free_mb(), stats.free);
-    serial_println!("  │ Page:    4 KiB               │");
-    serial_println!("  └─────────────────────────────┘");
+    serial_println!("  ┌-----------------------------┐");
+    serial_println!("  | Physical Memory              |");
+    serial_println!("  ├-----------------------------┤");
+    serial_println!("  | Total:   {:>5} MiB ({:>7}) |", stats.total_mb(), stats.total);
+    serial_println!("  | Used:    {:>5} MiB ({:>7}) |", stats.used_mb(), stats.used);
+    serial_println!("  | Free:    {:>5} MiB ({:>7}) |", stats.free_mb(), stats.free);
+    serial_println!("  | Page:    4 KiB               |");
+    serial_println!("  └-----------------------------┘");
 
     let fs = FS.lock();
     serial_println!("  VirtFS: {} files, {} bytes", fs.file_count(), fs.total_size());
@@ -583,7 +583,7 @@ fn cmd_pipe(args: &str) {
         return;
     }
 
-    serial_println!("  ─── Pipeline: {} → {} ───", agent_a, agent_b);
+    serial_println!("  --- Pipeline: {} -> {} ---", agent_a, agent_b);
 
     // Create a fresh channel for this pipeline
     let chan_id = {
@@ -634,11 +634,11 @@ fn cmd_pipe(args: &str) {
     }
 
     // Run agent A (writes to channel)
-    serial_println!("  Running {} → channel:{}...", agent_a, chan_id);
+    serial_println!("  Running {} -> channel:{}...", agent_a, chan_id);
     match crate::wasm_runtime::execute_agent(
         agent_a, wasm_a.unwrap(), None, Some(chan_id), None,
     ) {
-        Ok(()) => serial_println!("  {} completed ✓", agent_a),
+        Ok(()) => serial_println!("  {} completed ok", agent_a),
         Err(e) => {
             serial_println!("  {} failed: {}", agent_a, e);
             return;
@@ -649,20 +649,20 @@ fn cmd_pipe(args: &str) {
     {
         let channels = CHANNELS.lock();
         if let Some(ch) = channels.get(chan_id) {
-            serial_println!("  Channel:{} → {} messages queued", chan_id, ch.message_count());
+            serial_println!("  Channel:{} -> {} messages queued", chan_id, ch.message_count());
         }
     }
 
     // Run agent B (reads from channel)
-    serial_println!("  Running {} ← channel:{}...", agent_b, chan_id);
+    serial_println!("  Running {} <- channel:{}...", agent_b, chan_id);
     match crate::wasm_runtime::execute_agent(
         agent_b, wasm_b.unwrap(), None, None, Some(chan_id),
     ) {
-        Ok(()) => serial_println!("  {} completed ✓", agent_b),
+        Ok(()) => serial_println!("  {} completed ok", agent_b),
         Err(e) => serial_println!("  {} failed: {}", agent_b, e),
     }
 
-    serial_println!("  ─── Pipeline complete ───");
+    serial_println!("  --- Pipeline complete ---");
 }
 
 fn cmd_top() {
@@ -687,17 +687,17 @@ fn cmd_top() {
     let fs_bytes = fs.total_size();
     drop(fs);
 
-    serial_println!("  ══════ TuniCore v0.5.0 ══════");
+    serial_println!("  ====== TuniCore v0.6.0 ======");
     serial_println!("  Uptime: ~{}s   Tick: {}", secs, tick);
     serial_println!("  CPU:    x86_64 (1 core)");
-    serial_println!("  ─────────────────────────────");
+    serial_println!("  -----------------------------");
     serial_println!("  PROCS   {} run, {} dead, {} total", active, dead, total);
     serial_println!("  RAM     {} MiB total, {} MiB free", mem.total_mb(), mem.free_mb());
     serial_println!("  HEAP    32 MiB static");
     serial_println!("  FS      {} files ({} B)", files, fs_bytes);
     serial_println!("  CAPS    {} active / 4096 max", caps);
     serial_println!("  AUDIT   {} events", audit);
-    serial_println!("  ═════════════════════════════");
+    serial_println!("  =============================");
 }
 
 fn cmd_gc() {
@@ -761,7 +761,7 @@ fn cmd_env() {
     let env = ENV.lock();
     serial_println!("  Environment ({} vars):", env.len());
     serial_println!("  {:16} {}", "KEY", "VALUE");
-    serial_println!("  {:16} {}", "───", "─────");
+    serial_println!("  {:16} {}", "---", "-----");
     for (k, v) in env.iter() {
         serial_println!("  {:16} {}", k, v);
     }
@@ -776,7 +776,7 @@ fn cmd_run(args: &str) {
 
     let agents: alloc::vec::Vec<&str> = args.split_whitespace().collect();
     let total = agents.len();
-    serial_println!("  ─── Workflow: {} agents ───", total);
+    serial_println!("  --- Workflow: {} agents ---", total);
 
     static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
     static WRITER_WASM: &[u8] = include_bytes!("writer_agent.wasm");
@@ -801,23 +801,23 @@ fn cmd_run(args: &str) {
             Some(bytes) => {
                 match crate::wasm_runtime::execute_agent(name, bytes, None, None, None) {
                     Ok(()) => {
-                        serial_println!("  [{}/{}] {} ✓", i + 1, total, name);
+                        serial_println!("  [{}/{}] {} ok", i + 1, total, name);
                         ok += 1;
                     }
                     Err(e) => {
-                        serial_println!("  [{}/{}] {} ✗ ({})", i + 1, total, name, e);
+                        serial_println!("  [{}/{}] {} FAIL ({})", i + 1, total, name, e);
                         fail += 1;
                     }
                 }
             }
             None => {
-                serial_println!("  [{}/{}] {} ✗ (unknown agent)", i + 1, total, name);
+                serial_println!("  [{}/{}] {} FAIL (unknown agent)", i + 1, total, name);
                 fail += 1;
             }
         }
     }
 
-    serial_println!("  ─── Workflow complete: {} ok, {} failed ───", ok, fail);
+    serial_println!("  --- Workflow complete: {} ok, {} failed ---", ok, fail);
 }
 
 fn cmd_alias(args: &str) {
@@ -830,7 +830,7 @@ fn cmd_alias(args: &str) {
         return;
     }
     match ALIASES.lock().define(name, expansion) {
-        Ok(()) => serial_println!("  Alias '{}' → '{}'", name, expansion),
+        Ok(()) => serial_println!("  Alias '{}' -> '{}'", name, expansion),
         Err(e) => serial_println!("  Error: {}", e),
     }
 }
@@ -855,7 +855,7 @@ fn cmd_aliases() {
     }
     serial_println!("  Aliases ({}):", table.len());
     serial_println!("  {:12} {}", "NAME", "EXPANDS TO");
-    serial_println!("  {:12} {}", "────", "──────────");
+    serial_println!("  {:12} {}", "----", "----------");
     for (name, expansion) in table.iter() {
         serial_println!("  {:12} {}", name, expansion);
     }
@@ -881,15 +881,14 @@ fn cmd_sysinfo() {
 
     // ASCII art logo
     serial_println!();
-    serial_println!("  ████████╗ ██████╗");
-    serial_println!("  ╚══██╔══╝██╔════╝");
-    serial_println!("     ██║   ██║");
-    serial_println!("     ██║   ██║");
-    serial_println!("     ██║   ╚██████╗");
-    serial_println!("     ╚═╝    ╚═════╝");
+    serial_println!("  _____ ____");
+    serial_println!(" |_   _/ ___|");
+    serial_println!("   | || |");
+    serial_println!("   | || |___");
+    serial_println!("   |_| \\____|");
     serial_println!();
 
-    // System identity — copy values before dropping lock
+    // System identity - copy values before dropping lock
     let (hostname, version, owner, lang, shell, env_count) = {
         let env = ENV.lock();
         let h = alloc::string::String::from(env.get("hostname").unwrap_or("unknown"));
@@ -954,7 +953,7 @@ fn cmd_ask(args: &str) {
         serial_println!("  Example: ask vad är Rust?");
         return;
     }
-    serial_println!("  \u{1F914} Thinking...");
+    serial_println!("  Thinking...");
     match crate::llm::query(args) {
         Ok(response) => {
             serial_println!("  {}", response);
@@ -975,7 +974,7 @@ fn cmd_dmesg(args: &str) {
     let klog = crate::klog::KLOG.lock();
     serial_println!("  Kernel log ({} total, showing last {}):", klog.total(), n);
     serial_println!("  {:>6} {:>4} {}", "TICK", "LVL", "MESSAGE");
-    serial_println!("  {:>6} {:>4} {}", "────", "───", "───────");
+    serial_println!("  {:>6} {:>4} {}", "----", "---", "-------");
     for entry in klog.recent(n) {
         if entry.valid {
             serial_println!("  {:>6} {:>4} {}",
@@ -985,19 +984,19 @@ fn cmd_dmesg(args: &str) {
 }
 
 fn cmd_about() {
-    serial_println!("  ╔═══════════════════════════════════╗");
-    serial_println!("  ║  TuniCore v0.5.0                  ║");
-    serial_println!("  ║  Confidential Agent Runtime       ║");
-    serial_println!("  ╠═══════════════════════════════════╣");
-    serial_println!("  ║  Architecture: x86_64             ║");
-    serial_println!("  ║  APIC: x2APIC (MSR-based)        ║");
-    serial_println!("  ║  WASM: wasmi 1.0.9 (pure Rust)   ║");
-    serial_println!("  ║  Security: capability-based       ║");
-    serial_println!("  ║  Audit: FNV-1a hash chain         ║");
-    serial_println!("  ╠═══════════════════════════════════╣");
-    serial_println!("  ║  The agent is the interface.      ║");
-    serial_println!("  ║  The kernel is the guard.         ║");
-    serial_println!("  ╚═══════════════════════════════════╝");
+    serial_println!("  +===================================+");
+    serial_println!("  |  TuniCore v0.6.0                  |");
+    serial_println!("  |  Confidential Agent Runtime       |");
+    serial_println!("  +===================================+");
+    serial_println!("  |  Architecture: x86_64             |");
+    serial_println!("  |  APIC: x2APIC (MSR-based)        |");
+    serial_println!("  |  WASM: wasmi 1.0.9 (pure Rust)   |");
+    serial_println!("  |  Security: capability-based       |");
+    serial_println!("  |  Audit: FNV-1a hash chain         |");
+    serial_println!("  +===================================+");
+    serial_println!("  |  The agent is the interface.      |");
+    serial_println!("  |  The kernel is the guard.         |");
+    serial_println!("  +===================================+");
 }
 
 /// Ensure channel 0 exists
@@ -1017,7 +1016,7 @@ fn cmd_ls() {
         return;
     }
     serial_println!("  {:20} {:>8}  {:>8}", "NAME", "SIZE", "TICK");
-    serial_println!("  {:20} {:>8}  {:>8}", "────", "────", "────");
+    serial_println!("  {:20} {:>8}  {:>8}", "----", "----", "----");
     for f in files {
         serial_println!("  {:20} {:>6} B  t={}", f.name, f.size(), f.modified_at);
     }

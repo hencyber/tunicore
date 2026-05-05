@@ -1,4 +1,4 @@
-//! TuniCore — Confidential Agent Runtime
+//! TuniCore - Confidential Agent Runtime
 //!
 //! A capability-based kernel where the agent is the interface
 //! and the kernel is the guard. No POSIX. No shell. No sudo.
@@ -71,10 +71,10 @@ static _END: limine::RequestsEndMarker = limine::RequestsEndMarker::new();
 extern "C" fn kmain() -> ! {
     // Phase 1: Hardware foundation
     serial::init();
-    serial_println!("TuniCore v0.5.0 — Confidential Agent Runtime");
+    serial_println!("TuniCore v0.6.0 - Confidential Agent Runtime");
     serial_println!("The agent is the interface. The kernel is the guard.");
     serial_println!();
-    klog::boot("TuniCore v0.5.0 starting");
+    klog::boot("TuniCore v0.6.0 starting");
 
     // CPU feature detection (before anything else)
     serial_print!("[boot] Detecting hardware... ");
@@ -125,7 +125,7 @@ extern "C" fn kmain() -> ! {
         serial_println!("OK ({} MB usable)", usable / (1024 * 1024));
         klog::boot("Heap: 32 MiB static allocator");
 
-        // Page frame allocator — real physical memory management
+        // Page frame allocator - real physical memory management
         serial_print!("[boot] PMM... ");
         memory::init_page_alloc(entries);
         klog::boot("PMM: bitmap page frame allocator");
@@ -144,7 +144,7 @@ extern "C" fn kmain() -> ! {
     // Table is statically initialized, just log
     serial_println!("OK (4096 slots)");
 
-    // Audit log — record boot event
+    // Audit log - record boot event
     serial_print!("[guard] Audit log... ");
     audit::log_boot(interrupts::ticks());
     serial_println!("OK (hash chain initialized)");

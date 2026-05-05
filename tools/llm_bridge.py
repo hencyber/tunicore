@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TuniCore LLM Bridge — inline relay mode.
+TuniCore LLM Bridge - inline relay mode.
 
 Sits between user terminal and QEMU serial socket.
 Intercepts LLM queries (STX+"LLM:..."+ETX) and injects AI responses.
@@ -95,11 +95,11 @@ def main():
     try:
         sock.connect(SOCKET_PATH)
     except Exception as e:
-        print(f"  ✗ Cannot connect: {e}")
+        print(f"  ERROR: Cannot connect: {e}")
         print(f"  Start QEMU first with: -chardev socket,id=ser0,path={SOCKET_PATH},server=on,wait=off")
         sys.exit(1)
 
-    print(f"  ✓ Connected!")
+    print(f"  OK: Connected!")
     print(f"  Type commands or Ctrl+C to quit\n")
 
     sock.setblocking(False)
@@ -135,9 +135,9 @@ def main():
 
                             if msg.startswith("LLM:"):
                                 query = msg[4:]
-                                print(f"\n  ← AI Query: {query}")
+                                print(f"\n  < AI Query: {query}")
                                 response = get_ai_response(query)
-                                print(f"  → AI Reply: {response[:80]}...")
+                                print(f"  > AI Reply: {response[:80]}...")
 
                                 frame = bytes([STX]) + b"RSP:" + response.encode('utf-8', errors='replace') + bytes([ETX])
                                 sock.sendall(frame)

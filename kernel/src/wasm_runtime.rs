@@ -1,13 +1,13 @@
-//! WASM Agent Runtime — Phase 8
+//! WASM Agent Runtime - Phase 8
 //!
 //! Sandboxed WASM execution with rich host functions:
-//! - tc.log(ptr, len)                          — write to serial
-//! - tc.time() -> i64                          — get kernel tick
-//! - tc.chan_send(id, ptr, len) -> i32          — send to channel
-//! - tc.chan_recv(id, ptr, len) -> i32          — receive from channel
-//! - tc.fs_write(p_ptr, p_len, d_ptr, d_len)   — write file to VirtFS
-//! - tc.fs_read(p_ptr, p_len, buf_ptr, buf_len) — read file from VirtFS
-//! - tc.env_get(k_ptr, k_len, buf_ptr, buf_len) — read env variable
+//! - tc.log(ptr, len)                          - write to serial
+//! - tc.time() -> i64                          - get kernel tick
+//! - tc.chan_send(id, ptr, len) -> i32          - send to channel
+//! - tc.chan_recv(id, ptr, len) -> i32          - receive from channel
+//! - tc.fs_write(p_ptr, p_len, d_ptr, d_len)   - write file to VirtFS
+//! - tc.fs_read(p_ptr, p_len, buf_ptr, buf_len) - read file from VirtFS
+//! - tc.env_get(k_ptr, k_len, buf_ptr, buf_len) - read env variable
 
 use wasmi::{Caller, Engine, Extern, Func, Linker, Module, Store, TypedFunc};
 

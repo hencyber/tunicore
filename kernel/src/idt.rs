@@ -9,7 +9,7 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, Pag
 
 use crate::gdt;
 
-/// Static IDT — initialized once, lives for the kernel's lifetime
+/// Static IDT - initialized once, lives for the kernel's lifetime
 static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     let mut idt = InterruptDescriptorTable::new();
 

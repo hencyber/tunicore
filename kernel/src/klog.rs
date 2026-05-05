@@ -1,4 +1,4 @@
-//! Kernel Message Log — ring buffer for system events
+//! Kernel Message Log - ring buffer for system events
 //!
 //! Captures kernel events like boot, agent lifecycle, errors.
 //! Readable via `dmesg` intent command.

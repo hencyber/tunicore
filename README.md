@@ -1,12 +1,12 @@
-# 🌙 TuniCore
+# TuniCore
 
 > **The world's first conversational operating system.**
 > No GUI. No terminal commands to memorize. Just talk to it.
 
-TuniCore is a bare-metal x86_64 operating system written in Rust where the **primary interface is natural language**. Instead of memorizing `ls -la`, you say *"visa mina filer"*. Instead of scripting in Bash, you teach it with *"alias report run writer analyzer"*. And when it doesn't understand? It asks AI.
+TuniCore is a bare-metal x86_64 operating system written in Rust where the primary interface is natural language. Instead of memorizing `ls -la`, you say *"show my files"*. Instead of scripting in Bash, you teach it with *"alias report run writer analyzer"*. And when it doesn't understand? It asks AI.
 
 ```
-tc> visa konfiguration
+tc> show configuration
   hostname = tunicore
   version  = 0.6.0
   owner    = cybercore
@@ -21,14 +21,14 @@ tc> deploy greeter
 tc> deply hello
   Unknown: 'deply'. Did you mean 'deploy'?
 
-tc> ask vad är Rust?
-  🤔 Thinking...
-  Rust är ett systemprogrammeringsspråk designat för säkerhet och prestanda...
+tc> ask what is Rust?
+  Thinking...
+  Rust is a systems programming language designed for safety and performance...
 ```
 
 ---
 
-## 🧠 What Makes This Different
+## What Makes This Different
 
 Every hobby OS copies Unix. TuniCore doesn't.
 
@@ -38,67 +38,60 @@ Every hobby OS copies Unix. TuniCore doesn't.
 | Bash scripts | Teach aliases: `alias report run writer analyzer` |
 | `man pages` | Typo? "Did you mean 'deploy'?" (Levenshtein) |
 | Processes | WASM agents with capability-based sandboxing |
-| `/etc/` config files | `set hostname tunicore` — live, in-memory |
+| `/etc/` config files | `set hostname tunicore` - live, in-memory |
 | Terminal only | AI-powered: `ask` anything, get answers from Gemini |
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  LLM Bridge (Python — Gemini/OpenAI)            │
-│  Serial ←→ AI API                               │
-├──────────────────┬──────────────────────────────┤
-│  NLP Intent      │  WASM Agent Runtime           │
-│  SE+EN parsing   │  wasmi interpreter            │
-│  Levenshtein     │  8 host functions              │
-│  Smart suggest   │  6 built-in agents             │
-├──────────────────┴──────────────────────────────┤
-│  Kernel Services                                 │
-│  VirtFS · Channels · Env Store · Aliases         │
-│  Audit Trail · Command History · Klog            │
-├─────────────────────────────────────────────────┤
-│  Security Layer                                  │
-│  Capability Table · Resource Budgets · Guardian   │
-├─────────────────────────────────────────────────┤
-│  Hardware Abstraction                            │
-│  x86_64 · GDT · IDT · PIC · UART · PMM · Heap  │
-└─────────────────────────────────────────────────┘
++-------------------------------------------------+
+|  LLM Bridge (Python - Gemini/OpenAI)            |
+|  Serial <-> AI API                              |
++------------------+------------------------------+
+|  NLP Intent      |  WASM Agent Runtime           |
+|  SE+EN parsing   |  wasmi interpreter            |
+|  Levenshtein     |  8 host functions              |
+|  Smart suggest   |  6 built-in agents             |
++------------------+------------------------------+
+|  Kernel Services                                 |
+|  VirtFS - Channels - Env Store - Aliases         |
+|  Audit Trail - Command History - Klog            |
++-------------------------------------------------+
+|  Security Layer                                  |
+|  Capability Table - Resource Budgets - Guardian   |
++-------------------------------------------------+
+|  Hardware Abstraction                            |
+|  x86_64 - GDT - IDT - PIC - UART - PMM - Heap  |
++-------------------------------------------------+
 ```
 
-## ⚡ Features
+## Features
 
 ### Conversational Shell (37 commands + NLP)
 - **Bilingual NLP**: Swedish and English natural language parsing
-- **Smart Suggestions**: Typo → Levenshtein edit distance → "Did you mean...?"
+- **Smart Suggestions**: Typo -> Levenshtein edit distance -> "Did you mean...?"
 - **Command History**: Ring buffer with `!!` repeat
 - **User Aliases**: `alias deploy-all run writer analyzer greeter`
 
 ### WASM Agent Runtime
 - **6 built-in agents**: hello, writer, analyzer, greeter, sender, receiver
 - **8 host functions**: `tc.log`, `tc.time`, `tc.fs_write`, `tc.fs_read`, `tc.chan_send`, `tc.chan_recv`, `tc.env_get`
-- **Workflow orchestration**: `run writer analyzer` — sequential agent pipelines
-- **Pipe mode**: `pipe sender receiver` — channel-based IPC
+- **Workflow orchestration**: `run writer analyzer` - sequential agent pipelines
+- **Pipe mode**: `pipe sender receiver` - channel-based IPC
 
 ### Security
-- **Capability-based access control** — no ambient authority
-- **Resource budgets** — CPU, memory, I/O limits per agent
-- **Agent timeouts** — auto-kill runaway processes
-- **Full audit trail** — every action logged with tick-level timestamps
+- **Capability-based access control** - no ambient authority
+- **Resource budgets** - CPU, memory, I/O limits per agent
+- **Agent timeouts** - auto-kill runaway processes
+- **Full audit trail** - every action logged with tick-level timestamps
 
 ### AI Integration
-- **`ask` command** — query Gemini or OpenAI from bare metal
-- **LLM fallback** — unrecognized input → AI instead of error
-- **Serial bridge protocol** — `STX+LLM:query+ETX` ↔ `STX+RSP:response+ETX`
+- **`ask` command** - query Gemini or OpenAI from bare metal
+- **LLM fallback** - unrecognized input -> AI instead of error
+- **Serial bridge protocol** - `STX+LLM:query+ETX` <-> `STX+RSP:response+ETX`
 
 ### System Identity (`sysinfo`)
 ```
-  ████████╗ ██████╗
-  ╚══██╔══╝██╔════╝
-     ██║   ██║
-     ██║   ██║
-     ██║   ╚██████╗
-     ╚═╝    ╚═════╝
-
   OS        TuniCore v0.6.0
   Host      tunicore
   Owner     cybercore
@@ -111,7 +104,7 @@ Every hobby OS copies Unix. TuniCore doesn't.
   Commands  37 exact + NLP fuzzy
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -125,7 +118,7 @@ rustup component add rust-src
 sudo apt install qemu-system-x86_64 xorriso make
 ```
 
-### Build & Run
+### Build and Run
 
 ```bash
 make              # Build ISO
@@ -137,66 +130,66 @@ make run-uefi     # Run in QEMU (UEFI)
 ```bash
 export GEMINI_API_KEY="your-key"
 python3 tools/llm_bridge.py    # In a separate terminal
-# Then boot TuniCore — 'ask' commands will get AI responses
+# Then boot TuniCore - 'ask' commands will get AI responses
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 kernel/src/
-├── main.rs           # Boot sequence + shell REPL
-├── intent.rs         # NLP command dispatcher (37 commands)
-├── llm.rs            # Serial-based LLM bridge protocol
-├── wasm_runtime.rs   # WASM interpreter + 8 host functions
-├── agent.rs          # Process table + resource budgets
-├── virtfs.rs         # In-memory filesystem (64 files)
-├── channel.rs        # IPC channels for agent communication
-├── env.rs            # Key-value environment store
-├── alias.rs          # User-defined command aliases
-├── cap_table.rs      # Capability-based access control
-├── guardian.rs        # Security policy enforcement
-├── audit.rs          # Tamper-proof audit trail
-├── klog.rs           # Kernel ring buffer logger
-├── serial.rs         # UART 16550 driver
-├── interrupts.rs     # PIC + timer (100Hz tick)
-├── memory/           # PMM + heap allocator
-├── *.wasm            # 6 built-in WASM agents
+  main.rs           # Boot sequence + shell REPL
+  intent.rs         # NLP command dispatcher (37 commands)
+  llm.rs            # Serial-based LLM bridge protocol
+  wasm_runtime.rs   # WASM interpreter + 8 host functions
+  agent.rs          # Process table + resource budgets
+  virtfs.rs         # In-memory filesystem (64 files)
+  channel.rs        # IPC channels for agent communication
+  env.rs            # Key-value environment store
+  alias.rs          # User-defined command aliases
+  cap_table.rs      # Capability-based access control
+  guardian.rs       # Security policy enforcement
+  audit.rs          # Tamper-proof audit trail
+  klog.rs           # Kernel ring buffer logger
+  serial.rs         # UART 16550 driver
+  interrupts.rs     # PIC + timer (100Hz tick)
+  memory/           # PMM + heap allocator
+  *.wasm            # 6 built-in WASM agents
 tools/
-└── llm_bridge.py     # AI bridge (Gemini/OpenAI)
+  llm_bridge.py     # AI bridge (Gemini/OpenAI)
 ```
 
-## 🛤️ Development Timeline
+## Development Timeline
 
 | Phase | Feature | Status |
 |-------|---------|--------|
-| 1-4 | Boot, GDT, IDT, Heap, Serial | ✅ |
-| 5-7 | Capability system, Agent table, Audit | ✅ |
-| 8-10 | WASM runtime, VirtFS, Intent parser | ✅ |
-| 11-13 | NLP (SE+EN), Hardware detect, Agent I/O | ✅ |
-| 14-15 | IPC channels, Pipe orchestration | ✅ |
-| 16-18 | Env store, Workflows, Aliases | ✅ |
-| 19-20 | Agent config access, Command history | ✅ |
-| 21-22 | Smart suggestions, Sysinfo | ✅ |
-| 23 | LLM Bridge (AI integration) | ✅ |
+| 1-4 | Boot, GDT, IDT, Heap, Serial | Done |
+| 5-7 | Capability system, Agent table, Audit | Done |
+| 8-10 | WASM runtime, VirtFS, Intent parser | Done |
+| 11-13 | NLP (SE+EN), Hardware detect, Agent I/O | Done |
+| 14-15 | IPC channels, Pipe orchestration | Done |
+| 16-18 | Env store, Workflows, Aliases | Done |
+| 19-20 | Agent config access, Command history | Done |
+| 21-22 | Smart suggestions, Sysinfo | Done |
+| 23 | LLM Bridge (AI integration) | Done |
 
-**23 phases. 37 commands. 6 agents. 8 host functions. 28 source files. ~1 person.**
+23 phases. 37 commands. 6 agents. 8 host functions. 28 source files. 1 person.
 
-## 🤔 FAQ
+## FAQ
 
 **Q: Is the NLP "real"?**
-A: It's rule-based keyword matching + Levenshtein fuzzy matching + LLM fallback via serial bridge. Not a local neural network — but the architecture is designed so that when on-device LLMs become feasible on bare metal, the intent parser can be swapped.
+A: It's rule-based keyword matching + Levenshtein fuzzy matching + LLM fallback via serial bridge. Not a local neural network, but the architecture is designed so that when on-device LLMs become feasible on bare metal, the intent parser can be swapped.
 
 **Q: Why not just use Linux?**
-A: Because TuniCore isn't trying to be Linux. It's exploring what an OS could be if we skipped GUIs entirely and went straight from terminal → conversation.
+A: Because TuniCore isn't trying to be Linux. It's exploring what an OS could be if we skipped GUIs entirely and went straight from terminal to conversation.
 
 **Q: Can I write my own agents?**
-A: Yes! Any WASM binary that imports `tc.*` host functions can be deployed. See the `.wasm` files in `kernel/src/` for examples.
+A: Yes. Any WASM binary that imports `tc.*` host functions can be deployed. See the `.wasm` files in `kernel/src/` for examples.
 
-## 📄 License
+## License
 
 MIT
 
 ---
 
-*Built with 🦀 Rust, no standard library, on bare metal.*
-*TuniCore — the OS you talk to.*
+*Built with Rust, no standard library, on bare metal.*
+*TuniCore - the OS you talk to.*

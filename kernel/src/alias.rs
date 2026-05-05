@@ -1,4 +1,4 @@
-//! Command Alias System — teach your OS new tricks
+//! Command Alias System - teach your OS new tricks
 //!
 //! Users define custom commands that expand to existing commands.
 //! Stored in-kernel, persistent during session.

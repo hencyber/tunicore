@@ -1,4 +1,4 @@
-//! Interrupt handling — Local APIC (MSR-based)
+//! Interrupt handling - Local APIC (MSR-based)
 //!
 //! Uses MSR-based APIC register access to avoid MMIO page faults.
 //! The legacy PIC is fully disabled.

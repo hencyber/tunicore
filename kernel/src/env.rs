@@ -1,4 +1,4 @@
-//! Kernel Environment Store — key-value configuration
+//! Kernel Environment Store - key-value configuration
 //!
 //! Persistent (in-memory) config store for the OS.
 //! Readable by agents via tc.env_get, settable via shell.

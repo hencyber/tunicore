@@ -20,7 +20,7 @@ const STACK_SIZE: usize = 4096 * 5;
 /// Must be static to persist across context switches
 static mut DOUBLE_FAULT_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
-/// Task State Segment — provides separate stacks for exception handling
+/// Task State Segment - provides separate stacks for exception handling
 static TSS: Lazy<TaskStateSegment> = Lazy::new(|| {
     let mut tss = TaskStateSegment::new();
     tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {

@@ -1,4 +1,4 @@
-//! Page Frame Allocator — Physical memory management
+//! Page Frame Allocator - Physical memory management
 //!
 //! Bitmap-based allocator that uses the Limine memory map to track
 //! all usable 4 KiB physical frames in the system.

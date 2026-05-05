@@ -1,7 +1,7 @@
-//! VirtFS — In-memory virtual filesystem
+//! VirtFS - In-memory virtual filesystem
 //!
 //! Capability-gated file storage for agents.
-//! Files live in kernel memory — no disk required.
+//! Files live in kernel memory - no disk required.
 //! Every file operation is auditable via the capability system.
 
 use alloc::string::String;

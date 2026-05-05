@@ -1,4 +1,4 @@
-//! LLM Bridge — Serial-based AI query interface
+//! LLM Bridge - Serial-based AI query interface
 //!
 //! Protocol:
 //!   Kernel → Host: \x02LLM:query text\x03
@@ -41,7 +41,7 @@ pub fn query(prompt: &str) -> Result<String, &'static str> {
     loop {
         iters += 1;
         if iters > TIMEOUT_ITERS {
-            return Err("LLM timeout — no bridge running?");
+            return Err("LLM timeout - no bridge running?");
         }
 
         let byte = {
@@ -72,7 +72,7 @@ pub fn query(prompt: &str) -> Result<String, &'static str> {
                 }
                 WaitState::ReadBody => {
                     if b == ETX {
-                        // Done — convert to string
+                        // Done - convert to string
                         let text = core::str::from_utf8(&buf[..pos])
                             .unwrap_or("[invalid utf8]");
                         return Ok(String::from(text));
@@ -84,7 +84,7 @@ pub fn query(prompt: &str) -> Result<String, &'static str> {
                 }
             }
         } else {
-            // No data — spin briefly
+            // No data - spin briefly
             for _ in 0..100 { core::hint::spin_loop(); }
         }
     }

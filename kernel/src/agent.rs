@@ -176,7 +176,7 @@ impl Agent {
     }
 }
 
-/// Agent table — manages all active agents
+/// Agent table - manages all active agents
 pub struct AgentTable {
     agents: Vec<Agent>,
     total_spawned: u32,

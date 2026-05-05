@@ -1,7 +1,7 @@
 //! Inter-agent communication channels
 //!
 //! Capability-gated message passing between agents.
-//! A channel is a fixed-size ring buffer — sender needs WRITE cap,
+//! A channel is a fixed-size ring buffer - sender needs WRITE cap,
 //! receiver needs READ cap. This is TuniCore's IPC primitive.
 
 use alloc::vec::Vec;
@@ -44,7 +44,7 @@ impl Message {
     }
 }
 
-/// A channel — ring buffer of messages
+/// A channel - ring buffer of messages
 pub struct Channel {
     /// Channel ID
     pub id: u64,
@@ -100,7 +100,7 @@ impl Channel {
     }
 }
 
-/// Channel registry — manages all channels
+/// Channel registry - manages all channels
 pub struct ChannelRegistry {
     channels: Vec<Channel>,
     next_id: u64,

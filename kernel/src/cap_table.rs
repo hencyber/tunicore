@@ -1,7 +1,7 @@
 //! Kernel Capability Table
 //!
 //! The kernel owns all capabilities. Agents only see opaque handles.
-//! This is the enforcement layer — the "guard" in "the kernel is the guard."
+//! This is the enforcement layer - the "guard" in "the kernel is the guard."
 //!
 //! Key properties:
 //! - Capabilities have expiry times (auto-revocation)

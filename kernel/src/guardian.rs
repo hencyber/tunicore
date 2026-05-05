@@ -1,8 +1,8 @@
-//! Guardian — the built-in kernel agent
+//! Guardian - the built-in kernel agent
 //!
 //! This is TuniCore's first agent. It runs in kernel space and proves
 //! the entire capability chain works:
-//!   spawn → grant caps → use caps → audit logs → revoke
+//!   spawn -> grant caps -> use caps -> audit logs -> revoke
 //!
 //! In the future, this agent will be the "orchestrator" that manages
 //! user-deployed WASM agents.
@@ -25,7 +25,7 @@ pub fn run() -> ! {
         let mut table = AGENT_TABLE.lock();
         match table.spawn(
             "guardian",
-            None, // No parent — this IS the root
+            None, // No parent - this IS the root
             ResourceBudget::default_budget(),
             0,    // No lifetime limit
             tick,
@@ -88,29 +88,29 @@ pub fn run() -> ! {
     );
     log_grant("Compute(RX, 60s timeout)", &compute_cap);
 
-    // 3. Use capabilities — prove the enforcement works
+    // 3. Use capabilities - prove the enforcement works
     serial_println!();
     serial_println!("[guardian] Testing capability enforcement...");
 
-    // Read via serial cap — should succeed
+    // Read via serial cap - should succeed
     if let SyscallResult::Handle(cap) = serial_cap {
         let result = syscall::resource_read(agent_id, cap);
         serial_println!("[guardian] Serial READ: {:?}", result_status(&result));
     }
 
-    // Write via serial cap — should succeed
+    // Write via serial cap - should succeed
     if let SyscallResult::Handle(cap) = serial_cap {
         let result = syscall::resource_write(agent_id, cap, b"hello from guardian");
         serial_println!("[guardian] Serial WRITE: {:?}", result_status(&result));
     }
 
-    // Read via memory cap — should succeed
+    // Read via memory cap - should succeed
     if let SyscallResult::Handle(cap) = memory_cap {
         let result = syscall::resource_read(agent_id, cap);
         serial_println!("[guardian] Memory READ: {:?}", result_status(&result));
     }
 
-    // 4. Test DENIAL — try to WRITE to memory with a READ-only cap
+    // 4. Test DENIAL - try to WRITE to memory with a READ-only cap
     serial_println!();
     serial_println!("[guardian] Testing capability DENIAL...");
     if let SyscallResult::Handle(cap) = memory_cap {
@@ -118,7 +118,7 @@ pub fn run() -> ! {
         serial_println!("[guardian] Memory WRITE (read-only cap): {:?}", result_status(&result));
     }
 
-    // 5. Test DELEGATION — delegate attenuated serial cap
+    // 5. Test DELEGATION - delegate attenuated serial cap
     serial_println!();
     serial_println!("[guardian] Testing capability delegation...");
     if let SyscallResult::Handle(cap) = serial_cap {
@@ -128,11 +128,11 @@ pub fn run() -> ! {
         match table.delegate(cap, AgentId(99), Rights::READ, tick) {
             Ok(child_handle) => {
                 serial_println!(
-                    "[guardian] Delegated cap:{} → cap:{} (READ only) to agent:99",
+                    "[guardian] Delegated cap:{} -> cap:{} (READ only) to agent:99",
                     cap.0, child_handle.0
                 );
 
-                // Now revoke parent — child should cascade-revoke
+                // Now revoke parent - child should cascade-revoke
                 serial_println!("[guardian] Revoking parent cap:{}...", cap.0);
                 let _ = table.revoke(cap);
 
@@ -140,7 +140,7 @@ pub fn run() -> ! {
                 match table.check(child_handle, Rights::READ, tick) {
                     Ok(_) => serial_println!("[guardian] BUG: child still valid!"),
                     Err(e) => serial_println!(
-                        "[guardian] Cascade revocation works: child cap:{} → {:?}",
+                        "[guardian] Cascade revocation works: child cap:{} -> {:?}",
                         child_handle.0, e
                     ),
                 }
@@ -153,20 +153,20 @@ pub fn run() -> ! {
     serial_println!();
     syscall::system_status(agent_id);
 
-    // 7. WASM sandbox test — single agent
+    // 7. WASM sandbox test - single agent
     serial_println!();
-    serial_println!("[guardian] ─── WASM Sandbox Test ───");
+    serial_println!("[guardian] --- WASM Sandbox Test ---");
 
     static HELLO_WASM: &[u8] = include_bytes!("hello_agent.wasm");
 
     match crate::wasm_runtime::execute_agent("hello.wasm", HELLO_WASM, Some(agent_id), None, None) {
-        Ok(()) => serial_println!("[guardian] Single agent: OK ✓"),
+        Ok(()) => serial_println!("[guardian] Single agent: OK ok"),
         Err(e) => serial_println!("[guardian] Single agent failed: {}", e),
     }
 
     // 8. Multi-agent channel test
     serial_println!();
-    serial_println!("[guardian] ─── Multi-Agent Channel Test ───");
+    serial_println!("[guardian] --- Multi-Agent Channel Test ---");
 
     // Create a channel
     let chan_id = {
@@ -181,7 +181,7 @@ pub fn run() -> ! {
         "sender.wasm", SENDER_WASM, Some(agent_id),
         Some(chan_id), None,
     ) {
-        Ok(()) => serial_println!("[guardian] Sender agent: OK ✓"),
+        Ok(()) => serial_println!("[guardian] Sender agent: OK ok"),
         Err(e) => serial_println!("[guardian] Sender failed: {}", e),
     }
 
@@ -199,7 +199,7 @@ pub fn run() -> ! {
         "receiver.wasm", RECEIVER_WASM, Some(agent_id),
         None, Some(chan_id),
     ) {
-        Ok(()) => serial_println!("[guardian] Receiver agent: OK ✓"),
+        Ok(()) => serial_println!("[guardian] Receiver agent: OK ok"),
         Err(e) => serial_println!("[guardian] Receiver failed: {}", e),
     }
 
@@ -208,18 +208,18 @@ pub fn run() -> ! {
     syscall::system_status(agent_id);
     serial_println!("[guardian] All tests passed. Multi-agent system operational.");
 
-    // 9. Enter interactive intent mode — "talk to your OS"
+    // 9. Enter interactive intent mode - "talk to your OS"
     serial_println!();
-    serial_println!("═══════════════════════════════════════");
-    serial_println!("  TuniCore v0.5.0 — Intent Layer");
+    serial_println!("=======================================");
+    serial_println!("  TuniCore v0.6.0 - Intent Layer");
     serial_println!("  Type 'help' for commands.");
-    serial_println!("═══════════════════════════════════════");
+    serial_println!("=======================================");
     serial_println!();
 
     interactive_loop();
 }
 
-/// Interactive command loop — reads from serial, executes intents
+/// Interactive command loop - reads from serial, executes intents
 fn interactive_loop() -> ! {
     let mut line_buf = [0u8; 256];
     let mut line_pos: usize = 0;
@@ -233,7 +233,7 @@ fn interactive_loop() -> ! {
 
         if let Some(b) = byte {
             match b {
-                // Enter — execute command
+                // Enter - execute command
                 b'\r' | b'\n' => {
                     serial_println!();
                     if line_pos > 0 {
@@ -265,7 +265,7 @@ fn interactive_loop() -> ! {
                 _ => {} // Ignore other chars
             }
         } else {
-            // No input — yield CPU
+            // No input - yield CPU
             x86_64::instructions::hlt();
         }
     }
@@ -274,10 +274,10 @@ fn interactive_loop() -> ! {
 fn log_grant(name: &str, result: &SyscallResult) {
     match result {
         SyscallResult::Handle(h) => {
-            serial_println!("[guardian]   cap:{} ← {}", h.0, name);
+            serial_println!("[guardian]   cap:{} <- {}", h.0, name);
         }
         SyscallResult::Err(e) => {
-            serial_println!("[guardian]   FAILED: {} — {:?}", name, e);
+            serial_println!("[guardian]   FAILED: {} - {:?}", name, e);
         }
         _ => {}
     }
@@ -285,8 +285,8 @@ fn log_grant(name: &str, result: &SyscallResult) {
 
 fn result_status(result: &SyscallResult) -> &'static str {
     match result {
-        SyscallResult::Ok | SyscallResult::Value(_) | SyscallResult::Handle(_) => "OK ✓",
-        SyscallResult::Err(_) => "DENIED ✗",
+        SyscallResult::Ok | SyscallResult::Value(_) | SyscallResult::Handle(_) => "OK ok",
+        SyscallResult::Err(_) => "DENIED FAIL",
     }
 }
 

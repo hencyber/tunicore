@@ -1,7 +1,7 @@
 //! Minimal framebuffer text console
 //!
 //! Provides basic text rendering for the boot conversation interface.
-//! No decorations, no gradients — just clean text output.
+//! No decorations, no gradients - just clean text output.
 //! This will evolve into the agent conversation display.
 
 /// Basic 8x8 bitmap font for ASCII printable characters (32-126)

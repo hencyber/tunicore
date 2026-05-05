@@ -2,7 +2,7 @@
 //!
 //! Every resource in the system is capability-gated.
 //! Resources are the "what" that capabilities control access to.
-//! This is fundamentally different from Unix where resources are files —
+//! This is fundamentally different from Unix where resources are files -
 //! here, resources are typed and include compute, memory, channels, and devices.
 
 /// Unique resource identifier

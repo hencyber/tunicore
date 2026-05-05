@@ -1,4 +1,4 @@
-//! Syscall gate — the enforcement layer
+//! Syscall gate - the enforcement layer
 //!
 //! ALL agent operations go through this gate. No capability = no access.
 //! This is "the guard" made concrete in code.
@@ -105,7 +105,7 @@ pub fn resource_read(
             AUDIT_LOG.lock().record(
                 tick, agent, AuditEvent::CapCheckFail, cap_handle, -1,
             );
-            serial_println!("[guard] DENIED: agent:{} READ cap:{} — {:?}",
+            serial_println!("[guard] DENIED: agent:{} READ cap:{} - {:?}",
                 agent.0, cap_handle.0, e);
             SyscallResult::Err(SyscallError::CapabilityDenied(e))
         }
